@@ -21,6 +21,7 @@ type Order = {
 type Profile = {
   id: string;
   email: string;
+  username?: string;
   full_name: string;
   role: 'admin' | 'worker';
   created_at?: string;
@@ -50,11 +51,11 @@ export default function Home() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
 
-  const [loginEmail, setLoginEmail] = useState('');
+  const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
   const [workerName, setWorkerName] = useState('');
-  const [workerEmail, setWorkerEmail] = useState('');
+  const [workerUsername, setWorkerUsername] = useState('');
   const [workerPassword, setWorkerPassword] = useState('');
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -123,15 +124,20 @@ export default function Home() {
   };
 
   const login = async () => {
-    if (!loginEmail || !loginPassword) {
-      showMessage('error', 'أدخل البريد الإلكتروني وكلمة المرور');
+    if (!loginUsername || !loginPassword) {
+      showMessage('error', 'أدخل اسم المستخدم وكلمة المرور');
       return;
     }
 
     setLoginLoading(true);
 
+    const cleanUsername = loginUsername.trim().toLowerCase();
+    const fakeEmail = cleanUsername.includes('@')
+      ? cleanUsername
+      : `${cleanUsername}@worker.local`;
+
     const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
+      email: fakeEmail,
       password: loginPassword,
     });
 
@@ -172,9 +178,9 @@ export default function Home() {
   };
 
   const createWorker = async () => {
-    if (profile?.role !== 'admin') return;
+    if (profile?.role !== 'admin' || !user) return;
 
-    if (!workerName || !workerEmail || !workerPassword) {
+    if (!workerName || !workerUsername || !workerPassword) {
       showMessage('error', 'عبّ جميع حقول العامل');
       return;
     }
@@ -187,59 +193,27 @@ export default function Home() {
     setWorkerLoading(true);
 
     try {
-      const tempClient = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false,
-            storageKey: `temp-worker-${Date.now()}`,
-          },
-        }
-      );
-
-      const { data: signUpData, error: signUpError } = await tempClient.auth.signUp({
-        email: workerEmail,
-        password: workerPassword,
-        options: {
-          data: {
-            full_name: workerName,
-            role: 'worker',
-          },
-        },
+      const res = await fetch('/api/create-worker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: workerName,
+          username: workerUsername,
+          password: workerPassword,
+          adminUserId: user.id,
+        }),
       });
 
-      if (signUpError) {
-        showMessage('error', signUpError.message || 'فشل إنشاء حساب العامل');
-        setWorkerLoading(false);
-        return;
-      }
+      const result = await res.json();
 
-      const newUserId = signUpData.user?.id;
-
-      if (!newUserId) {
-        showMessage('error', 'تم إنشاء الحساب لكن لم يتم استلام رقم المستخدم');
-        setWorkerLoading(false);
-        return;
-      }
-
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: newUserId,
-        email: workerEmail,
-        full_name: workerName,
-        role: 'worker',
-      });
-
-      if (profileError) {
-        showMessage('error', profileError.message || 'تم إنشاء الحساب لكن فشل حفظ بيانات العامل');
+      if (!res.ok) {
+        showMessage('error', result.error || 'فشل إنشاء العامل');
         setWorkerLoading(false);
         return;
       }
 
       setWorkerName('');
-      setWorkerEmail('');
+      setWorkerUsername('');
       setWorkerPassword('');
       showMessage('success', 'تم إنشاء العامل بنجاح');
       await fetchWorkers();
@@ -395,13 +369,13 @@ export default function Home() {
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-bold text-stone-700">
-                البريد الإلكتروني
+                اسم المستخدم
               </label>
               <input
-                type="email"
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                placeholder="name@example.com"
+                type="text"
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                placeholder="اسم المستخدم"
                 className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
             </div>
@@ -534,10 +508,10 @@ export default function Home() {
               />
 
               <input
-                type="email"
-                value={workerEmail}
-                onChange={(e) => setWorkerEmail(e.target.value)}
-                placeholder="بريد العامل"
+                type="text"
+                value={workerUsername}
+                onChange={(e) => setWorkerUsername(e.target.value)}
+                placeholder="اسم المستخدم"
                 className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
 
@@ -567,7 +541,7 @@ export default function Home() {
                 <thead className="bg-stone-50/90 text-sm text-stone-600">
                   <tr>
                     <th className="px-6 py-4 font-bold md:px-8">الاسم</th>
-                    <th className="px-6 py-4 font-bold">البريد</th>
+                    <th className="px-6 py-4 font-bold">اسم المستخدم</th>
                     <th className="px-6 py-4 font-bold">الصلاحية</th>
                   </tr>
                 </thead>
@@ -575,7 +549,7 @@ export default function Home() {
                   {workers.map((w) => (
                     <tr key={w.id} className="transition hover:bg-stone-50/70">
                       <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
-                      <td className="px-6 py-4 text-stone-600">{w.email}</td>
+                      <td className="px-6 py-4 text-stone-600">{w.username || w.email}</td>
                       <td className="px-6 py-4">
                         <span className="inline-flex rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white">
                           عامل
