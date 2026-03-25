@@ -29,11 +29,11 @@ export async function POST(req: Request) {
 
     const cleanUsername = String(username).trim().toLowerCase();
 
-    const { data: adminProfile, error: adminError } = await supabaseAnon
-      .from('profiles')
-      .select('id, role')
-      .eq('id', adminUserId)
-      .single();
+   const { data: adminProfile, error: adminError } = await supabaseAdmin
+  .from('profiles')
+  .select('id, role')
+  .eq('id', adminUserId)
+  .single();
 
       console.log('ADMIN CHECK:', adminUserId, adminProfile, adminError);
 
