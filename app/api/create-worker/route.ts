@@ -35,6 +35,8 @@ export async function POST(req: Request) {
       .eq('id', adminUserId)
       .single();
 
+      console.log('ADMIN CHECK:', adminUserId, adminProfile, adminError);
+
     if (adminError || !adminProfile || adminProfile.role !== 'admin') {
       return NextResponse.json(
         { error: 'غير مصرح لك بإضافة عمال' },
