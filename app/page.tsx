@@ -113,6 +113,7 @@ const translations = {
     roleSaveError: 'تعذر تحديث الصلاحية',
     branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
     branchLangError: 'تعذر حفظ اللغة والفرع',
+    chooseBranchForWorker: 'اختر فرعًا للعامل قبل الحفظ',
     userDeleted: 'تم حذف المستخدم بنجاح',
     userDeleteError: 'تعذر حذف المستخدم',
     confirmDelete: 'هل أنت متأكد من حذف هذا المستخدم؟',
@@ -213,6 +214,7 @@ const translations = {
     roleSaveError: 'Unable to update role',
     branchLangSaved: 'Branch and language saved successfully',
     branchLangError: 'Unable to save branch and language',
+    chooseBranchForWorker: 'Select a branch for the worker before saving',
     userDeleted: 'User deleted successfully',
     userDeleteError: 'Unable to delete user',
     confirmDelete: 'Are you sure you want to delete this user?',
@@ -269,6 +271,11 @@ const applyDocumentLanguage = (lang: Language) => {
   document.documentElement.lang = lang;
   document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 };
+
+const BRANCH_OPTIONS = [
+  { value: 'فرع الصحافة', labelAr: 'فرع الصحافة', labelEn: 'Sahafa Branch' },
+  { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
+] as const;
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
@@ -452,6 +459,8 @@ export default function Home() {
     setUiLanguage(lang);
   };
 
+  const getEffectiveWorkerRole = (worker: Profile) => workerRoleMap[worker.id] || worker.role;
+  const canUseAllBranches = (worker: Profile) => getEffectiveWorkerRole(worker) === 'admin';
 
   const hydrateWorkerMaps = (list: Profile[]) => {
     const nextRoleMap: Record<string, Role> = {};
@@ -756,33 +765,38 @@ export default function Home() {
   const saveWorkerSettings = async (worker: Profile) => {
     if (profile?.role !== 'admin' || !user) return;
 
+    const nextRole = getEffectiveWorkerRole(worker);
+    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
+    const nextBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
+
+    if (nextRole === 'worker' && !nextBranch) {
+      showMessage('error', t.chooseBranchForWorker);
+      return;
+    }
+
     setSavingWorkerId(worker.id);
 
     try {
-      const res = await fetch('/api/update-worker-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workerId: worker.id,
-          adminUserId: user.id,
-          language: workerLanguageMap[worker.id] || 'ar',
-          branch: workerBranchMap[worker.id] || '',
-        }),
-      });
+      const { error } = await withTimeout(
+        supabase
+          .from('profiles')
+          .update({
+            language: nextLanguage,
+            branch: nextRole === 'admin' ? nextBranch : nextBranch,
+          })
+          .eq('id', worker.id),
+        8000
+      );
 
-      let result: any = null;
-      try {
-        result = await res.json();
-      } catch {}
-
-      if (!res.ok) {
-        showMessage('error', result?.error || t.branchLangError);
+      if (error) {
+        showMessage('error', error.message || t.branchLangError);
         return;
       }
 
       showMessage('success', t.branchLangSaved);
       await fetchWorkers(profile);
-    } catch {
+    } catch (error) {
+      console.error('SAVE WORKER SETTINGS ERROR:', error);
       showMessage('error', t.branchLangError);
     } finally {
       setSavingWorkerId(null);
@@ -1425,9 +1439,12 @@ export default function Home() {
                           }
                           className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
                         >
-                          <option value="">{t.allBranches}</option>
-                          <option value="فرع الصحافة">{t.safaBranch}</option>
-                          <option value="فرع الروضة">{t.rawdaBranch}</option>
+                          {canUseAllBranches(w) && <option value="">{t.allBranches}</option>}
+                          {BRANCH_OPTIONS.map((branchOption) => (
+                            <option key={branchOption.value} value={branchOption.value}>
+                              {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                            </option>
+                          ))}
                         </select>
                       </div>
 
@@ -1554,9 +1571,12 @@ export default function Home() {
                             }
                             className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[170px]"
                           >
-                            <option value="">{t.allBranches}</option>
-                            <option value="فرع الصحافة">{t.safaBranch}</option>
-                            <option value="فرع الروضة">{t.rawdaBranch}</option>
+                            {canUseAllBranches(w) && <option value="">{t.allBranches}</option>}
+                            {BRANCH_OPTIONS.map((branchOption) => (
+                              <option key={branchOption.value} value={branchOption.value}>
+                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                              </option>
+                            ))}
                           </select>
                         </td>
 
