@@ -20,7 +20,13 @@ type Order = {
 
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
-type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
+type WorkerAction =
+  | ''
+  | 'reset-password'
+  | 'change-role'
+  | 'change-language'
+  | 'change-branch'
+  | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
 type PageView = 'orders' | 'workers' | 'create-worker' | 'worker-action';
 
@@ -111,8 +117,10 @@ const translations = {
     resetPasswordError: 'فشل إعادة تعيين كلمة المرور',
     roleSaved: 'تم تحديث الصلاحية بنجاح',
     roleSaveError: 'تعذر تحديث الصلاحية',
-    branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
-    branchLangError: 'تعذر حفظ اللغة والفرع',
+    languageSaved: 'تم تغيير اللغة بنجاح',
+    languageSaveError: 'تعذر تغيير اللغة',
+    branchSaved: 'تم تغيير الفرع بنجاح',
+    branchSaveError: 'تعذر تغيير الفرع',
     chooseBranchForWorker: 'اختر فرعًا للعامل قبل الحفظ',
     userDeleted: 'تم حذف المستخدم بنجاح',
     userDeleteError: 'تعذر حذف المستخدم',
@@ -131,7 +139,8 @@ const translations = {
     executing: 'جاري التنفيذ...',
     resetPasswordAction: 'إعادة تعيين كلمة المرور',
     changeRoleAction: 'تغيير الصلاحية',
-    saveSettingsAction: 'حفظ اللغة والفرع',
+    changeLanguageAction: 'تغيير اللغة',
+    changeBranchAction: 'تغيير الفرع',
     deleteUserAction: 'حذف اليوزر',
     selectActionFirst: 'اختر الإجراء أولاً',
     email: 'الإيميل',
@@ -228,8 +237,10 @@ const translations = {
     resetPasswordError: 'Failed to reset password',
     roleSaved: 'Role updated successfully',
     roleSaveError: 'Unable to update role',
-    branchLangSaved: 'Branch and language saved successfully',
-    branchLangError: 'Unable to save branch and language',
+    languageSaved: 'Language changed successfully',
+    languageSaveError: 'Unable to change language',
+    branchSaved: 'Branch changed successfully',
+    branchSaveError: 'Unable to change branch',
     chooseBranchForWorker: 'Select a branch for the worker before saving',
     userDeleted: 'User deleted successfully',
     userDeleteError: 'Unable to delete user',
@@ -248,7 +259,8 @@ const translations = {
     executing: 'Executing...',
     resetPasswordAction: 'Reset Password',
     changeRoleAction: 'Change Role',
-    saveSettingsAction: 'Save Language & Branch',
+    changeLanguageAction: 'Change Language',
+    changeBranchAction: 'Change Branch',
     deleteUserAction: 'Delete User',
     selectActionFirst: 'Select an action first',
     email: 'Email',
@@ -831,11 +843,44 @@ export default function Home() {
     }
   };
 
-  const saveWorkerSettings = async (worker: Profile) => {
+  const saveWorkerLanguage = async (worker: Profile) => {
+    if (profile?.role !== 'admin' || !user) return;
+
+    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
+
+    setSavingWorkerId(worker.id);
+
+    try {
+      const { error } = await withTimeout(
+        async () =>
+          await supabase
+            .from('profiles')
+            .update({
+              language: nextLanguage,
+            })
+            .eq('id', worker.id),
+        8000
+      );
+
+      if (error) {
+        showMessage('error', error.message || t.languageSaveError);
+        return;
+      }
+
+      showActionSuccess(t.languageSaved);
+      await fetchWorkers(profile);
+    } catch (error) {
+      console.error('SAVE WORKER LANGUAGE ERROR:', error);
+      showMessage('error', t.languageSaveError);
+    } finally {
+      setSavingWorkerId(null);
+    }
+  };
+
+  const saveWorkerBranch = async (worker: Profile) => {
     if (profile?.role !== 'admin' || !user) return;
 
     const nextRole = getEffectiveWorkerRole(worker);
-    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
     const nextBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
 
     if (nextRole === 'worker' && !nextBranch) {
@@ -851,7 +896,6 @@ export default function Home() {
           await supabase
             .from('profiles')
             .update({
-              language: nextLanguage,
               branch: nextBranch,
             })
             .eq('id', worker.id),
@@ -859,15 +903,15 @@ export default function Home() {
       );
 
       if (error) {
-        showMessage('error', error.message || t.branchLangError);
+        showMessage('error', error.message || t.branchSaveError);
         return;
       }
 
-      showActionSuccess(t.branchLangSaved);
+      showActionSuccess(t.branchSaved);
       await fetchWorkers(profile);
     } catch (error) {
-      console.error('SAVE WORKER SETTINGS ERROR:', error);
-      showMessage('error', t.branchLangError);
+      console.error('SAVE WORKER BRANCH ERROR:', error);
+      showMessage('error', t.branchSaveError);
     } finally {
       setSavingWorkerId(null);
     }
@@ -954,7 +998,8 @@ export default function Home() {
 
     if (action === 'reset-password') return await resetWorkerPassword(worker);
     if (action === 'change-role') return await changeWorkerRole(worker);
-    if (action === 'save-settings') return await saveWorkerSettings(worker);
+    if (action === 'change-language') return await saveWorkerLanguage(worker);
+    if (action === 'change-branch') return await saveWorkerBranch(worker);
     if (action === 'delete-user') return await deleteWorker(worker);
   };
 
@@ -1497,7 +1542,8 @@ export default function Home() {
                             <option value="">{t.selectAction}</option>
                             <option value="reset-password">{t.resetPasswordAction}</option>
                             <option value="change-role">{t.changeRoleAction}</option>
-                            <option value="save-settings">{t.saveSettingsAction}</option>
+                            <option value="change-language">{t.changeLanguageAction}</option>
+                            <option value="change-branch">{t.changeBranchAction}</option>
                             <option value="delete-user">{t.deleteUserAction}</option>
                           </select>
                         </div>
@@ -1549,7 +1595,8 @@ export default function Home() {
                               <option value="">{t.selectAction}</option>
                               <option value="reset-password">{t.resetPasswordAction}</option>
                               <option value="change-role">{t.changeRoleAction}</option>
-                              <option value="save-settings">{t.saveSettingsAction}</option>
+                              <option value="change-language">{t.changeLanguageAction}</option>
+                            <option value="change-branch">{t.changeBranchAction}</option>
                               <option value="delete-user">{t.deleteUserAction}</option>
                             </select>
                           </td>
@@ -1623,7 +1670,8 @@ export default function Home() {
                           <option value="">{t.selectAction}</option>
                           <option value="reset-password">{t.resetPasswordAction}</option>
                           <option value="change-role">{t.changeRoleAction}</option>
-                          <option value="save-settings">{t.saveSettingsAction}</option>
+                          <option value="change-language">{t.changeLanguageAction}</option>
+                          <option value="change-branch">{t.changeBranchAction}</option>
                           <option value="delete-user">{t.deleteUserAction}</option>
                         </select>
                       </div>
@@ -1682,44 +1730,45 @@ export default function Home() {
                         </div>
                       )}
 
-                      {(workerActionMap[selectedWorker.id] || '') === 'save-settings' && (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
-                            <select
-                              value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
-                              onChange={(e) =>
-                                setWorkerLanguageMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value as Language,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              <option value="ar">{t.arabic}</option>
-                              <option value="en">{t.english}</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
-                            <select
-                              value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
-                              onChange={(e) =>
-                                setWorkerBranchMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
-                              {BRANCH_OPTIONS.map((branchOption) => (
-                                <option key={branchOption.value} value={branchOption.value}>
-                                  {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-language' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
+                          <select
+                            value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
+                            onChange={(e) =>
+                              setWorkerLanguageMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value as Language,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            <option value="ar">{t.arabic}</option>
+                            <option value="en">{t.english}</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-branch' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
+                          <select
+                            value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
+                            onChange={(e) =>
+                              setWorkerBranchMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
+                            {BRANCH_OPTIONS.map((branchOption) => (
+                              <option key={branchOption.value} value={branchOption.value}>
+                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
 
