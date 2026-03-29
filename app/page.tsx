@@ -337,32 +337,32 @@ export default function Home() {
   };
 
   const fetchProfileWithRetry = async (userId: string) => {
-    setProfileLoading(true);
+  setProfileLoading(true);
 
-    try {
-      const delays = [0, 600, 1200, 2000];
+  try {
+    const delays = [0, 400];
 
-      for (let i = 0; i < delays.length; i++) {
-        if (delays[i] > 0) await sleep(delays[i]);
+    for (let i = 0; i < delays.length; i++) {
+      if (delays[i] > 0) await sleep(delays[i]);
 
-        const { data, error } = await fetchProfileOnce(userId);
+      const { data, error } = await fetchProfileOnce(userId);
 
-        if (data) {
-          setProfile(data);
-          return data;
-        }
-
-        if (error) {
-          console.error('PROFILE FETCH ERROR:', error);
-        }
+      if (data) {
+        setProfile(data);
+        return data;
       }
 
-      setProfile(null);
-      return null;
-    } finally {
-      setProfileLoading(false);
+      if (error) {
+        console.error('PROFILE FETCH ERROR:', error);
+      }
     }
-  };
+
+    setProfile(null);
+    return null;
+  } finally {
+    setProfileLoading(false);
+  }
+};
 
   const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
     if (!silent) setRefreshingOrders(true);
