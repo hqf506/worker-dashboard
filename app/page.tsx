@@ -127,6 +127,7 @@ const translations = {
     saveSettingsAction: 'حفظ اللغة والفرع',
     deleteUserAction: 'حذف اليوزر',
     selectActionFirst: 'اختر الإجراء أولاً',
+    email: 'الإيميل',
   },
   en: {
     loading: 'Loading...',
@@ -221,6 +222,7 @@ const translations = {
     saveSettingsAction: 'Save Language & Branch',
     deleteUserAction: 'Delete User',
     selectActionFirst: 'Select an action first',
+    email: 'Email',
   },
 } as const;
 
@@ -232,8 +234,11 @@ const usernameToEmail = (username: string) => {
 };
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function cx(...classes: Array<string | false | undefined>) {
+  return classes.filter(Boolean).join(' ');
+}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -338,9 +343,7 @@ export default function Home() {
       const delays = [0, 600, 1200, 2000];
 
       for (let i = 0; i < delays.length; i++) {
-        if (delays[i] > 0) {
-          await sleep(delays[i]);
-        }
+        if (delays[i] > 0) await sleep(delays[i]);
 
         const { data, error } = await fetchProfileOnce(userId);
 
@@ -499,7 +502,6 @@ export default function Home() {
       });
 
       let result: any = null;
-
       try {
         result = await res.json();
       } catch {}
@@ -550,7 +552,6 @@ export default function Home() {
       });
 
       let result: any = null;
-
       try {
         result = await res.json();
       } catch {}
@@ -587,7 +588,6 @@ export default function Home() {
       });
 
       let result: any = null;
-
       try {
         result = await res.json();
       } catch {}
@@ -624,7 +624,6 @@ export default function Home() {
       });
 
       let result: any = null;
-
       try {
         result = await res.json();
       } catch {}
@@ -660,7 +659,6 @@ export default function Home() {
       });
 
       let result: any = null;
-
       try {
         result = await res.json();
       } catch {}
@@ -687,25 +685,10 @@ export default function Home() {
       return;
     }
 
-    if (action === 'reset-password') {
-      await resetWorkerPassword(worker);
-      return;
-    }
-
-    if (action === 'change-role') {
-      await changeWorkerRole(worker);
-      return;
-    }
-
-    if (action === 'save-settings') {
-      await saveWorkerSettings(worker);
-      return;
-    }
-
-    if (action === 'delete-user') {
-      await deleteWorker(worker);
-      return;
-    }
+    if (action === 'reset-password') return await resetWorkerPassword(worker);
+    if (action === 'change-role') return await changeWorkerRole(worker);
+    if (action === 'save-settings') return await saveWorkerSettings(worker);
+    if (action === 'delete-user') return await deleteWorker(worker);
   };
 
   useEffect(() => {
@@ -780,10 +763,8 @@ export default function Home() {
 
     const channel = supabase
       .channel('orders-channel')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        () => fetchOrders(true, profile)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
+        fetchOrders(true, profile)
       )
       .subscribe();
 
@@ -813,7 +794,6 @@ export default function Home() {
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
-
     if (!q) return visibleOrders;
 
     return visibleOrders.filter((o) =>
@@ -844,7 +824,7 @@ export default function Home() {
         dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4 py-8 text-stone-800"
       >
-        <div className="w-full max-w-md rounded-[32px] border border-white/60 bg-white/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur md:p-8">
+        <div className="w-full max-w-md rounded-[32px] border border-white/60 bg-white/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:p-6 md:p-8">
           <div className="mb-6 text-center">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] border border-stone-200 bg-white shadow-sm">
               <img src="/logo-sahafa.png" alt="logo" className="h-14 w-14 object-contain" />
@@ -855,11 +835,12 @@ export default function Home() {
 
           {message && (
             <div
-              className={`mb-4 rounded-2xl px-4 py-3 text-sm font-bold ${
+              className={cx(
+                'mb-4 rounded-2xl px-4 py-3 text-sm font-bold',
                 message.type === 'success'
                   ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                   : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-              }`}
+              )}
             >
               {message.text}
             </div>
@@ -907,9 +888,9 @@ export default function Home() {
         dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
-        <div className="rounded-[28px] border border-rose-200 bg-white/90 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+        <div className="w-full max-w-lg rounded-[28px] border border-rose-200 bg-white/90 px-6 py-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)] sm:px-8 sm:py-10">
           <div className="text-lg font-extrabold text-rose-700">{t.noProfile}</div>
-          <p className="mt-2 text-sm text-stone-500">{user.email}</p>
+          <p className="mt-2 break-all text-sm text-stone-500">{user.email}</p>
           <button
             onClick={logout}
             className="mt-5 rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
@@ -924,49 +905,50 @@ export default function Home() {
   return (
     <main
       dir={isArabic ? 'rtl' : 'ltr'}
-      className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4 py-6 text-stone-800 md:px-8"
+      className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-3 py-4 text-stone-800 sm:px-4 sm:py-6 md:px-6 lg:px-8"
     >
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
         {message && (
           <div
-            className={`rounded-[24px] px-5 py-4 text-sm font-bold shadow-sm ${
+            className={cx(
+              'rounded-[24px] px-4 py-3 text-sm font-bold shadow-sm sm:px-5 sm:py-4',
               message.type === 'success'
                 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
                 : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
-            }`}
+            )}
           >
             {message.text}
           </div>
         )}
 
-        <section className="relative overflow-hidden rounded-[32px] border border-white/60 bg-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur">
+        <section className="relative overflow-hidden rounded-[28px] border border-white/60 bg-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="absolute inset-0 bg-gradient-to-l from-stone-100/40 via-transparent to-white/20" />
-          <div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between md:p-8">
-            <div className="flex items-center gap-4">
-              <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-stone-200 bg-white shadow-sm">
-                <img src="/logo-sahafa.png" alt="logo" className="h-14 w-14 object-contain" />
+          <div className="relative flex flex-col gap-5 p-4 sm:p-6 md:p-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-[20px] border border-stone-200 bg-white shadow-sm sm:h-20 sm:w-20 sm:rounded-[24px]">
+                <img src="/logo-sahafa.png" alt="logo" className="h-11 w-11 object-contain sm:h-14 sm:w-14" />
               </div>
 
-              <div>
-                <div className="mb-2 inline-flex rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white shadow-sm">
+              <div className="min-w-0">
+                <div className="mb-2 inline-flex rounded-full bg-stone-900 px-3 py-1 text-[11px] font-bold text-white shadow-sm sm:text-xs">
                   {profile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
                 </div>
-                <h1 className="text-3xl font-extrabold tracking-tight text-stone-900 md:text-4xl">
+                <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl lg:text-4xl">
                   {profile.role === 'admin' ? t.titleAdmin : t.titleWorker}
                 </h1>
-                <p className="mt-1 text-sm text-stone-500 md:text-base">{profile.full_name || user.email}</p>
+                <p className="mt-1 text-sm text-stone-500 sm:text-base">{profile.full_name || user.email}</p>
               </div>
             </div>
 
-            <div className="flex flex-col items-stretch gap-3 md:items-end">
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="flex flex-col gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
                 <StatCard label={t.openOrders} value={counts.total} />
                 <StatCard label={t.newOrders} value={counts.new} />
                 <StatCard label={t.readyOrders} value={counts.ready} />
                 <StatCard label={t.deliveredOrders} value={counts.closed} />
               </div>
 
-              <div className="flex gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end sm:gap-3">
                 <button
                   onClick={() => fetchOrders()}
                   disabled={refreshingOrders}
@@ -987,13 +969,13 @@ export default function Home() {
         </section>
 
         {profile.role === 'admin' && (
-          <section className="overflow-hidden rounded-[32px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur">
-            <div className="border-b border-stone-100 px-6 py-5 md:px-8">
-              <h2 className="text-xl font-extrabold text-stone-900">{t.addWorker}</h2>
+          <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
+            <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+              <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.addWorker}</h2>
               <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
             </div>
 
-            <div className="grid gap-4 px-6 py-6 md:grid-cols-4 md:px-8">
+            <div className="grid gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-4 md:px-8">
               <input
                 type="text"
                 value={workerName}
@@ -1027,11 +1009,139 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="border-t border-stone-100 px-6 py-5 md:px-8">
+            <div className="border-t border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
               <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
             </div>
 
-            <div className="overflow-x-auto">
+            {/* mobile / tablet cards */}
+            <div className="grid gap-3 px-4 pb-4 sm:px-6 sm:pb-6 md:hidden">
+              {workers.length === 0 && (
+                <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                  {t.noWorkers}
+                </div>
+              )}
+
+              {workers.map((w) => {
+                const isExecuting =
+                  resettingWorkerId === w.id ||
+                  changingRoleId === w.id ||
+                  savingWorkerId === w.id ||
+                  deletingWorkerId === w.id;
+
+                return (
+                  <div key={w.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+                    <div className="mb-3">
+                      <div className="text-lg font-extrabold text-stone-900">{w.full_name || '-'}</div>
+                      <div className="mt-1 text-sm text-stone-600">{w.username || w.email}</div>
+                      <div className="text-xs text-stone-400 break-all">{w.email}</div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.role}</label>
+                        <select
+                          value={workerRoleMap[w.id] || w.role}
+                          onChange={(e) =>
+                            setWorkerRoleMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value as Role,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="worker">{t.worker}</option>
+                          <option value="admin">{t.admin}</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.language}</label>
+                        <select
+                          value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
+                          onChange={(e) =>
+                            setWorkerLanguageMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value as Language,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="ar">{t.arabic}</option>
+                          <option value="en">{t.english}</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.branch}</label>
+                        <select
+                          value={workerBranchMap[w.id] ?? w.branch ?? ''}
+                          onChange={(e) =>
+                            setWorkerBranchMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="">{t.allBranches}</option>
+                          <option value="فرع الصحافة">{t.safaBranch}</option>
+                          <option value="فرع الروضة">{t.rawdaBranch}</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.newPassword}</label>
+                        <input
+                          type="password"
+                          value={resetPasswordMap[w.id] || ''}
+                          onChange={(e) =>
+                            setResetPasswordMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={t.newPassword}
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.actions}</label>
+                        <div className="grid grid-cols-[1fr_auto] gap-2">
+                          <select
+                            value={workerActionMap[w.id] || ''}
+                            onChange={(e) =>
+                              setWorkerActionMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value as WorkerAction,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            <option value="">{t.selectAction}</option>
+                            <option value="reset-password">{t.resetPasswordAction}</option>
+                            <option value="change-role">{t.changeRoleAction}</option>
+                            <option value="save-settings">{t.saveSettingsAction}</option>
+                            <option value="delete-user">{t.deleteUserAction}</option>
+                          </select>
+
+                          <button
+                            onClick={() => runWorkerAction(w)}
+                            disabled={isExecuting}
+                            className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
+                          >
+                            {isExecuting ? t.executing : t.execute}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* desktop table */}
+            <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full text-right">
                 <thead className="bg-stone-50/90 text-sm text-stone-600">
                   <tr>
@@ -1045,118 +1155,116 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
-                  {workers.map((w) => (
-                    <tr key={w.id} className="transition hover:bg-stone-50/70">
-                      <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
-                      <td className="px-6 py-4 text-stone-600">
-                        <div>{w.username || w.email}</div>
-                        <div className="text-xs text-stone-400">{w.email}</div>
-                      </td>
+                  {workers.map((w) => {
+                    const isExecuting =
+                      resettingWorkerId === w.id ||
+                      changingRoleId === w.id ||
+                      savingWorkerId === w.id ||
+                      deletingWorkerId === w.id;
 
-                      <td className="px-6 py-4">
-                        <select
-                          value={workerRoleMap[w.id] || w.role}
-                          onChange={(e) =>
-                            setWorkerRoleMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value as Role,
-                            }))
-                          }
-                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
-                        >
-                          <option value="worker">{t.worker}</option>
-                          <option value="admin">{t.admin}</option>
-                        </select>
-                      </td>
+                    return (
+                      <tr key={w.id} className="transition hover:bg-stone-50/70">
+                        <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
+                        <td className="px-6 py-4 text-stone-600">
+                          <div>{w.username || w.email}</div>
+                          <div className="text-xs text-stone-400">{w.email}</div>
+                        </td>
 
-                      <td className="px-6 py-4">
-                        <select
-                          value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
-                          onChange={(e) =>
-                            setWorkerLanguageMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value as Language,
-                            }))
-                          }
-                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
-                        >
-                          <option value="ar">{t.arabic}</option>
-                          <option value="en">{t.english}</option>
-                        </select>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <select
-                          value={workerBranchMap[w.id] ?? w.branch ?? ''}
-                          onChange={(e) =>
-                            setWorkerBranchMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value,
-                            }))
-                          }
-                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[170px]"
-                        >
-                          <option value="">{t.allBranches}</option>
-                          <option value="فرع الصحافة">{t.safaBranch}</option>
-                          <option value="فرع الروضة">{t.rawdaBranch}</option>
-                        </select>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <input
-                          type="password"
-                          value={resetPasswordMap[w.id] || ''}
-                          onChange={(e) =>
-                            setResetPasswordMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={t.newPassword}
-                          className="min-w-[180px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                        />
-                      </td>
-
-                      <td className="px-6 py-4 md:px-8">
-                        <div className="flex flex-wrap items-center gap-2">
+                        <td className="px-6 py-4">
                           <select
-                            value={workerActionMap[w.id] || ''}
+                            value={workerRoleMap[w.id] || w.role}
                             onChange={(e) =>
-                              setWorkerActionMap((prev) => ({
+                              setWorkerRoleMap((prev) => ({
                                 ...prev,
-                                [w.id]: e.target.value as WorkerAction,
+                                [w.id]: e.target.value as Role,
                               }))
                             }
-                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[190px]"
+                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
                           >
-                            <option value="">{t.selectAction}</option>
-                            <option value="reset-password">{t.resetPasswordAction}</option>
-                            <option value="change-role">{t.changeRoleAction}</option>
-                            <option value="save-settings">{t.saveSettingsAction}</option>
-                            <option value="delete-user">{t.deleteUserAction}</option>
+                            <option value="worker">{t.worker}</option>
+                            <option value="admin">{t.admin}</option>
                           </select>
+                        </td>
 
-                          <button
-                            onClick={() => runWorkerAction(w)}
-                            disabled={
-                              resettingWorkerId === w.id ||
-                              changingRoleId === w.id ||
-                              savingWorkerId === w.id ||
-                              deletingWorkerId === w.id
+                        <td className="px-6 py-4">
+                          <select
+                            value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
+                            onChange={(e) =>
+                              setWorkerLanguageMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value as Language,
+                              }))
                             }
-                            className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
                           >
-                            {resettingWorkerId === w.id ||
-                            changingRoleId === w.id ||
-                            savingWorkerId === w.id ||
-                            deletingWorkerId === w.id
-                              ? t.executing
-                              : t.execute}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            <option value="ar">{t.arabic}</option>
+                            <option value="en">{t.english}</option>
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <select
+                            value={workerBranchMap[w.id] ?? w.branch ?? ''}
+                            onChange={(e) =>
+                              setWorkerBranchMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value,
+                              }))
+                            }
+                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[170px]"
+                          >
+                            <option value="">{t.allBranches}</option>
+                            <option value="فرع الصحافة">{t.safaBranch}</option>
+                            <option value="فرع الروضة">{t.rawdaBranch}</option>
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <input
+                            type="password"
+                            value={resetPasswordMap[w.id] || ''}
+                            onChange={(e) =>
+                              setResetPasswordMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value,
+                              }))
+                            }
+                            placeholder={t.newPassword}
+                            className="min-w-[180px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                          />
+                        </td>
+
+                        <td className="px-6 py-4 md:px-8">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              value={workerActionMap[w.id] || ''}
+                              onChange={(e) =>
+                                setWorkerActionMap((prev) => ({
+                                  ...prev,
+                                  [w.id]: e.target.value as WorkerAction,
+                                }))
+                              }
+                              className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[190px]"
+                            >
+                              <option value="">{t.selectAction}</option>
+                              <option value="reset-password">{t.resetPasswordAction}</option>
+                              <option value="change-role">{t.changeRoleAction}</option>
+                              <option value="save-settings">{t.saveSettingsAction}</option>
+                              <option value="delete-user">{t.deleteUserAction}</option>
+                            </select>
+
+                            <button
+                              onClick={() => runWorkerAction(w)}
+                              disabled={isExecuting}
+                              className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {isExecuting ? t.executing : t.execute}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 
@@ -1167,15 +1275,15 @@ export default function Home() {
           </section>
         )}
 
-        <section className="overflow-hidden rounded-[32px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur">
-          <div className="border-b border-stone-100 px-6 py-5 md:px-8">
-            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
+          <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h2 className="text-xl font-extrabold text-stone-900">{t.currentOrders}</h2>
+                <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.currentOrders}</h2>
                 <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
               </div>
 
-              <div className="w-full md:w-[380px]">
+              <div className="w-full lg:w-[380px]">
                 <input
                   type="text"
                   value={search}
@@ -1187,7 +1295,88 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* mobile / tablet order cards */}
+          <div className="grid gap-3 px-4 py-4 sm:px-6 md:hidden">
+            {filteredOrders.map((o) => (
+              <div key={o.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-stone-500">{t.invoice}</div>
+                    <div className="text-lg font-extrabold text-stone-900">#{o.receipt_number}</div>
+                  </div>
+                  <span
+                    className={cx(
+                      'inline-flex rounded-full px-3 py-1 text-xs font-bold',
+                      statusStyles[o.status] || 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
+                    )}
+                  >
+                    {statusLabels[o.status] || o.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <InfoItem label={t.customer} value={o.customer_name || '-'} />
+                  <InfoItem label={t.phone} value={o.phone || '-'} dir="ltr" />
+                  <InfoItem label={t.branch} value={o.branch || '-'} />
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {o.status !== 'closed' && (
+                    <button
+                      onClick={() => updateStatus(o.id, 'ready')}
+                      disabled={busyId === o.id || o.status === 'ready'}
+                      className={cx(
+                        'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
+                        o.status === 'ready'
+                          ? 'cursor-not-allowed bg-stone-400'
+                          : 'bg-sky-600 hover:bg-sky-700'
+                      )}
+                    >
+                      {busyId === o.id && o.status !== 'ready'
+                        ? t.updating
+                        : o.status === 'ready'
+                        ? `${t.ready} ✔️`
+                        : t.ready}
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => updateStatus(o.id, 'closed')}
+                    disabled={busyId === o.id || o.status !== 'ready'}
+                    className={cx(
+                      'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
+                      o.status === 'closed'
+                        ? 'cursor-not-allowed bg-stone-400'
+                        : o.status !== 'ready'
+                        ? 'cursor-not-allowed bg-stone-300'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    )}
+                  >
+                    {busyId === o.id && o.status === 'ready'
+                      ? t.updating
+                      : o.status === 'closed'
+                      ? `${t.delivered} ✔️`
+                      : t.delivered}
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {filteredOrders.length === 0 && orders.length > 0 && (
+              <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                {t.noMatchingOrders}
+              </div>
+            )}
+
+            {orders.length === 0 && (
+              <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                {t.noOrders}
+              </div>
+            )}
+          </div>
+
+          {/* desktop table */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full text-right">
               <thead className="bg-stone-50/90 text-sm text-stone-600">
                 <tr>
@@ -1209,9 +1398,10 @@ export default function Home() {
                     <td className="px-6 py-4">{o.branch || '-'}</td>
                     <td className="px-6 py-4">
                       <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
+                        className={cx(
+                          'inline-flex rounded-full px-3 py-1 text-xs font-bold',
                           statusStyles[o.status] || 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
-                        }`}
+                        )}
                       >
                         {statusLabels[o.status] || o.status}
                       </span>
@@ -1222,11 +1412,12 @@ export default function Home() {
                           <button
                             onClick={() => updateStatus(o.id, 'ready')}
                             disabled={busyId === o.id || o.status === 'ready'}
-                            className={`rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition ${
+                            className={cx(
+                              'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
                               o.status === 'ready'
                                 ? 'cursor-not-allowed bg-stone-400'
                                 : 'bg-sky-600 hover:bg-sky-700'
-                            }`}
+                            )}
                           >
                             {busyId === o.id && o.status !== 'ready'
                               ? t.updating
@@ -1239,13 +1430,14 @@ export default function Home() {
                         <button
                           onClick={() => updateStatus(o.id, 'closed')}
                           disabled={busyId === o.id || o.status !== 'ready'}
-                          className={`rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition ${
+                          className={cx(
+                            'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
                             o.status === 'closed'
                               ? 'cursor-not-allowed bg-stone-400'
                               : o.status !== 'ready'
                               ? 'cursor-not-allowed bg-stone-300'
                               : 'bg-emerald-600 hover:bg-emerald-700'
-                          }`}
+                          )}
                         >
                           {busyId === o.id && o.status === 'ready'
                             ? t.updating
@@ -1276,9 +1468,28 @@ export default function Home() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[22px] border border-stone-200/70 bg-white/90 px-4 py-4 shadow-[0_10px_25px_rgba(0,0,0,0.04)]">
-      <div className="text-xs font-bold text-stone-500">{label}</div>
-      <div className="mt-2 text-3xl font-extrabold text-stone-900">{value}</div>
+    <div className="rounded-[20px] border border-stone-200/70 bg-white/90 px-3 py-3 shadow-[0_10px_25px_rgba(0,0,0,0.04)] sm:rounded-[22px] sm:px-4 sm:py-4">
+      <div className="text-[11px] font-bold text-stone-500 sm:text-xs">{label}</div>
+      <div className="mt-1 text-2xl font-extrabold text-stone-900 sm:mt-2 sm:text-3xl">{value}</div>
+    </div>
+  );
+}
+
+function InfoItem({
+  label,
+  value,
+  dir,
+}: {
+  label: string;
+  value: string;
+  dir?: 'ltr' | 'rtl';
+}) {
+  return (
+    <div className="rounded-2xl bg-stone-50 px-3 py-2">
+      <div className="text-[11px] font-bold text-stone-500">{label}</div>
+      <div className="mt-1 text-sm font-semibold text-stone-900" dir={dir}>
+        {value}
+      </div>
     </div>
   );
 }
