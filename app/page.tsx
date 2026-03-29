@@ -1409,7 +1409,7 @@ export default function Home() {
           </section>
         )}
 
-        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
