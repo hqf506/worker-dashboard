@@ -59,6 +59,8 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
+  const [refreshingOrders, setRefreshingOrders] = useState(false);
+  const [resettingWorkerId, setResettingWorkerId] = useState<string | null>(null);
 
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -66,6 +68,8 @@ export default function Home() {
   const [workerName, setWorkerName] = useState('');
   const [workerUsername, setWorkerUsername] = useState('');
   const [workerPassword, setWorkerPassword] = useState('');
+
+  const [resetPasswordMap, setResetPasswordMap] = useState<Record<string, string>>({});
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -106,19 +110,25 @@ export default function Home() {
     return data as Profile;
   };
 
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('id', { ascending: false });
+  const fetchOrders = async (silent = false) => {
+    if (!silent) setRefreshingOrders(true);
 
-    if (error) {
-      console.error('ORDERS ERROR:', error);
-      showMessage('error', 'تعذر تحميل الطلبات');
-      return;
+    try {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) {
+        console.error('ORDERS ERROR:', error);
+        showMessage('error', 'تعذر تحميل الطلبات');
+        return;
+      }
+
+      setOrders((data as Order[]) || []);
+    } finally {
+      if (!silent) setRefreshingOrders(false);
     }
-
-    setOrders((data as Order[]) || []);
   };
 
   const fetchWorkers = async (currentProfile?: Profile | null) => {
@@ -192,7 +202,7 @@ export default function Home() {
       }
 
       showMessage('success', 'تم تحديث حالة الطلب');
-      await fetchOrders();
+      await fetchOrders(true);
     } finally {
       setBusyId(null);
     }
@@ -257,6 +267,62 @@ export default function Home() {
     }
   };
 
+  const resetWorkerPassword = async (worker: Profile) => {
+    if (profile?.role !== 'admin' || !user) return;
+
+    const newPassword = (resetPasswordMap[worker.id] || '').trim();
+
+    if (!newPassword) {
+      showMessage('error', `أدخل كلمة مرور جديدة للعامل ${worker.full_name}`);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      showMessage('error', 'كلمة المرور الجديدة لازم تكون 6 أحرف أو أكثر');
+      return;
+    }
+
+    setResettingWorkerId(worker.id);
+
+    try {
+      const res = await fetch('/api/reset-worker-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workerId: worker.id,
+          newPassword,
+          adminUserId: user.id,
+        }),
+      });
+
+      let result: any = null;
+
+      try {
+        result = await res.json();
+      } catch {
+        result = null;
+      }
+
+      if (!res.ok) {
+        console.error('RESET PASSWORD API ERROR:', result);
+        showMessage('error', result?.error || 'فشل إعادة تعيين كلمة المرور');
+        return;
+      }
+
+      setResetPasswordMap((prev) => ({
+        ...prev,
+        [worker.id]: '',
+      }));
+
+      showMessage('success', `تم تغيير كلمة مرور ${worker.full_name} بنجاح`);
+    } catch (err) {
+      console.error('RESET PASSWORD ERROR:', err);
+      showMessage('error', 'حدث خطأ أثناء إعادة تعيين كلمة المرور');
+    } finally {
+      setResettingWorkerId(null);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -318,14 +384,14 @@ export default function Home() {
   useEffect(() => {
     if (!user || !profile) return;
 
-    fetchOrders();
+    fetchOrders(true);
 
     const channel = supabase
       .channel('orders-channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => fetchOrders()
+        () => fetchOrders(true)
       )
       .subscribe();
 
@@ -524,12 +590,22 @@ export default function Home() {
                 <StatCard label="تم التسليم" value={counts.closed} />
               </div>
 
-              <button
-                onClick={logout}
-                className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600"
-              >
-                تسجيل خروج
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => fetchOrders()}
+                  disabled={refreshingOrders}
+                  className="rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-stone-900 ring-1 ring-stone-200 shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {refreshingOrders ? 'جاري التحديث...' : 'تحديث الطلبات'}
+                </button>
+
+                <button
+                  onClick={logout}
+                  className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600"
+                >
+                  تسجيل خروج
+                </button>
+              </div>
             </div>
           </div>
         </section>
@@ -588,6 +664,8 @@ export default function Home() {
                     <th className="px-6 py-4 font-bold md:px-8">الاسم</th>
                     <th className="px-6 py-4 font-bold">اسم المستخدم</th>
                     <th className="px-6 py-4 font-bold">الصلاحية</th>
+                    <th className="px-6 py-4 font-bold">كلمة مرور جديدة</th>
+                    <th className="px-6 py-4 font-bold md:px-8">الإجراء</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
@@ -599,6 +677,29 @@ export default function Home() {
                         <span className="inline-flex rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white">
                           عامل
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <input
+                          type="password"
+                          value={resetPasswordMap[w.id] || ''}
+                          onChange={(e) =>
+                            setResetPasswordMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="كلمة مرور جديدة"
+                          className="min-w-[180px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                        />
+                      </td>
+                      <td className="px-6 py-4 md:px-8">
+                        <button
+                          onClick={() => resetWorkerPassword(w)}
+                          disabled={resettingWorkerId === w.id}
+                          className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {resettingWorkerId === w.id ? 'جاري التغيير...' : 'إعادة تعيين كلمة المرور'}
+                        </button>
                       </td>
                     </tr>
                   ))}
