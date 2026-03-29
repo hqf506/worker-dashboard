@@ -867,33 +867,51 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
-      setUser(currentUser);
 
-      if (currentUser) {
-        const useRetry = _event === 'SIGNED_IN';
-        const showLoader = _event === 'SIGNED_IN';
-
-        const currentProfile = await fetchProfileWithRetry(
-          currentUser.id,
-          useRetry,
-          showLoader
-        );
-
-        if (currentProfile?.role === 'admin') {
-          await fetchWorkers(currentProfile);
-        } else {
-          setWorkers([]);
-        }
-
-        if (currentProfile) {
-          await fetchOrders(true, currentProfile);
-        }
-      } else {
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
         setProfile(null);
         setProfileLoading(false);
         setWorkers([]);
+        setOrders([]);
+        setAuthLoading(false);
+        return;
+      }
+
+      if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') {
+        return;
+      }
+
+      setUser(currentUser);
+
+      if (!currentUser) {
+        setProfile(null);
+        setProfileLoading(false);
+        setWorkers([]);
+        setOrders([]);
+        setAuthLoading(false);
+        return;
+      }
+
+      const useRetry = event === 'SIGNED_IN';
+      const showLoader = event === 'SIGNED_IN';
+
+      const currentProfile = await fetchProfileWithRetry(
+        currentUser.id,
+        useRetry,
+        showLoader
+      );
+
+      if (currentProfile?.role === 'admin') {
+        await fetchWorkers(currentProfile);
+      } else {
+        setWorkers([]);
+      }
+
+      if (currentProfile) {
+        await fetchOrders(true, currentProfile);
       }
 
       setAuthLoading(false);
