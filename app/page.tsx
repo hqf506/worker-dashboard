@@ -281,9 +281,9 @@ const usernameToEmail = (username: string) => {
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const withTimeout = async <T,>(promise: Promise<T>, ms = 8000): Promise<T> => {
+const withTimeout = async <T,>(run: () => Promise<T>, ms = 8000): Promise<T> => {
   return await Promise.race([
-    promise,
+    run(),
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error('Request timeout')), ms)
     ),
@@ -539,11 +539,12 @@ export default function Home() {
   const fetchProfileOnce = async (userId: string) => {
     try {
       const result = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle(),
+        async () =>
+          await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle(),
         8000
       );
 
@@ -606,7 +607,7 @@ export default function Home() {
         query = query.eq('branch', activeProfile.branch);
       }
 
-      const result = await withTimeout(query, 8000);
+      const result = await withTimeout(async () => await query, 8000);
       const { data, error } = result as any;
 
       if (error) {
@@ -632,10 +633,11 @@ export default function Home() {
 
     try {
       const result = await withTimeout(
-        supabase
-          .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false }),
+        async () =>
+          await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false }),
         8000
       );
 
@@ -845,13 +847,14 @@ export default function Home() {
 
     try {
       const { error } = await withTimeout(
-        supabase
-          .from('profiles')
-          .update({
-            language: nextLanguage,
-            branch: nextRole === 'admin' ? nextBranch : nextBranch,
-          })
-          .eq('id', worker.id),
+        async () =>
+          await supabase
+            .from('profiles')
+            .update({
+              language: nextLanguage,
+              branch: nextBranch,
+            })
+            .eq('id', worker.id),
         8000
       );
 
@@ -969,7 +972,7 @@ export default function Home() {
       try {
         const {
           data: { user: currentUser },
-        } = await withTimeout(supabase.auth.getUser(), 8000);
+        } = await withTimeout(() => supabase.auth.getUser(), 8000);
 
         if (!currentUser) {
           if (!mountedRef.current) return;
