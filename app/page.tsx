@@ -20,13 +20,7 @@ type Order = {
 
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
-type WorkerAction =
-  | ''
-  | 'reset-password'
-  | 'change-role'
-  | 'change-language'
-  | 'change-branch'
-  | 'delete-user';
+type WorkerAction = '' | 'reset-password' | 'change-role' | 'change-branch' | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
 type PageView = 'orders' | 'workers' | 'create-worker' | 'worker-action';
 
@@ -117,10 +111,8 @@ const translations = {
     resetPasswordError: 'فشل إعادة تعيين كلمة المرور',
     roleSaved: 'تم تحديث الصلاحية بنجاح',
     roleSaveError: 'تعذر تحديث الصلاحية',
-    languageSaved: 'تم تغيير اللغة بنجاح',
-    languageSaveError: 'تعذر تغيير اللغة',
-    branchSaved: 'تم تغيير الفرع بنجاح',
-    branchSaveError: 'تعذر تغيير الفرع',
+    branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
+    branchLangError: 'تعذر حفظ اللغة والفرع',
     chooseBranchForWorker: 'اختر فرعًا للعامل قبل الحفظ',
     userDeleted: 'تم حذف المستخدم بنجاح',
     userDeleteError: 'تعذر حذف المستخدم',
@@ -139,8 +131,7 @@ const translations = {
     executing: 'جاري التنفيذ...',
     resetPasswordAction: 'إعادة تعيين كلمة المرور',
     changeRoleAction: 'تغيير الصلاحية',
-    changeLanguageAction: 'تغيير اللغة',
-    changeBranchAction: 'تغيير الفرع',
+    saveSettingsAction: 'حفظ اللغة والفرع',
     deleteUserAction: 'حذف اليوزر',
     selectActionFirst: 'اختر الإجراء أولاً',
     email: 'الإيميل',
@@ -237,10 +228,8 @@ const translations = {
     resetPasswordError: 'Failed to reset password',
     roleSaved: 'Role updated successfully',
     roleSaveError: 'Unable to update role',
-    languageSaved: 'Language changed successfully',
-    languageSaveError: 'Unable to change language',
-    branchSaved: 'Branch changed successfully',
-    branchSaveError: 'Unable to change branch',
+    branchLangSaved: 'Branch and language saved successfully',
+    branchLangError: 'Unable to save branch and language',
     chooseBranchForWorker: 'Select a branch for the worker before saving',
     userDeleted: 'User deleted successfully',
     userDeleteError: 'Unable to delete user',
@@ -259,8 +248,7 @@ const translations = {
     executing: 'Executing...',
     resetPasswordAction: 'Reset Password',
     changeRoleAction: 'Change Role',
-    changeLanguageAction: 'Change Language',
-    changeBranchAction: 'Change Branch',
+    saveSettingsAction: 'Save Language & Branch',
     deleteUserAction: 'Delete User',
     selectActionFirst: 'Select an action first',
     email: 'Email',
@@ -283,8 +271,6 @@ const translations = {
     actionSelectionHint: 'Choose an action from the list, then press continue.',
   },
 } as const;
-
-type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
@@ -321,10 +307,21 @@ const applyDocumentLanguage = (lang: Language) => {
 const BRANCH_OPTIONS = [
   { value: 'فرع الصحافة', labelAr: 'فرع الصحافة', labelEn: 'Sahafa Branch' },
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
+  { value: 'all', labelAr: 'الجميع', labelEn: 'All Branches' },
 ] as const;
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
+}
+
+function getBranchLabel(branch: string | null | undefined, lang: Language, t: TranslationMap) {
+  if (!branch || !branch.trim()) return '-';
+  if (branch === 'all') return t.allBranches;
+
+  const match = BRANCH_OPTIONS.find((option) => option.value === branch);
+  if (!match) return branch;
+
+  return lang === 'ar' ? match.labelAr : match.labelEn;
 }
 
 
@@ -512,7 +509,6 @@ export default function Home() {
   };
 
   const getEffectiveWorkerRole = (worker: Profile) => workerRoleMap[worker.id] || worker.role;
-  const canUseAllBranches = (worker: Profile) => getEffectiveWorkerRole(worker) === 'admin';
 
   const selectedWorker = useMemo(
     () => workers.find((worker) => worker.id === selectedWorkerId) || null,
@@ -617,7 +613,7 @@ export default function Home() {
       const activeProfile = profileOverride ?? profile;
       let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
-      if (activeProfile?.role === 'worker' && activeProfile?.branch) {
+      if (activeProfile?.role === 'worker' && activeProfile?.branch && activeProfile.branch !== 'all') {
         query = query.eq('branch', activeProfile.branch);
       }
 
@@ -845,40 +841,6 @@ export default function Home() {
     }
   };
 
-  const saveWorkerLanguage = async (worker: Profile) => {
-    if (profile?.role !== 'admin' || !user) return;
-
-    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
-
-    setSavingWorkerId(worker.id);
-
-    try {
-      const { error } = await withTimeout(
-        async () =>
-          await supabase
-            .from('profiles')
-            .update({
-              language: nextLanguage,
-            })
-            .eq('id', worker.id),
-        8000
-      );
-
-      if (error) {
-        showMessage('error', error.message || t.languageSaveError);
-        return;
-      }
-
-      showActionSuccess(t.languageSaved);
-      await fetchWorkers(profile);
-    } catch (error) {
-      console.error('SAVE WORKER LANGUAGE ERROR:', error);
-      showMessage('error', t.languageSaveError);
-    } finally {
-      setSavingWorkerId(null);
-    }
-  };
-
   const saveWorkerBranch = async (worker: Profile) => {
     if (profile?.role !== 'admin' || !user) return;
 
@@ -1000,7 +962,6 @@ export default function Home() {
 
     if (action === 'reset-password') return await resetWorkerPassword(worker);
     if (action === 'change-role') return await changeWorkerRole(worker);
-    if (action === 'change-language') return await saveWorkerLanguage(worker);
     if (action === 'change-branch') return await saveWorkerBranch(worker);
     if (action === 'delete-user') return await deleteWorker(worker);
   };
@@ -1207,28 +1168,6 @@ export default function Home() {
     { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
   ];
 
-
-  const adminMenuItems = [
-    {
-      key: 'orders' as const,
-      label: t.currentOrders,
-      icon: '📦',
-      subLabel: isArabic ? `المفتوحة ${counts.total} / المغلقة ${counts.closed}` : `Open ${counts.total} / Closed ${counts.closed}`,
-    },
-    {
-      key: 'workers' as const,
-      label: t.currentWorkers,
-      icon: '👷‍♂️',
-      subLabel: isArabic ? `${workers.length} مستخدم` : `${workers.length} users`,
-    },
-    {
-      key: 'create-worker' as const,
-      label: t.addWorker,
-      icon: '➕',
-      subLabel: isArabic ? 'إنشاء يوزر جديد' : 'Create a new user',
-    },
-  ];
-
   if (bootLoading || authLoading || (profileLoading && !profile)) {
     return (
       <main
@@ -1375,8 +1314,8 @@ export default function Home() {
           </div>
         </div>
       )}
-
       <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
+
         <section className="relative overflow-hidden rounded-[28px] border border-white/60 bg-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="absolute inset-0 bg-gradient-to-l from-stone-100/40 via-transparent to-white/20" />
           <div className="relative flex flex-col gap-5 p-4 sm:p-6 md:p-8 lg:flex-row lg:items-center lg:justify-between">
@@ -1424,106 +1363,187 @@ export default function Home() {
           </div>
         </section>
 
-        {profile.role === 'admin' ? (
-          <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:items-start">
-            <aside className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px] sm:p-5 lg:sticky lg:top-6">
-              <div className="mb-3 px-2 text-sm font-bold text-stone-500">{isArabic ? 'القائمة' : 'Menu'}</div>
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1">
-                {adminMenuItems.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setPageView(item.key)}
-                    className={cx(
-                      'w-full rounded-[24px] border px-4 py-4 text-start shadow-sm transition',
-                      pageView === item.key
-                        ? 'border-stone-900 bg-stone-900 text-white'
-                        : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
-                    )}
-                  >
-                    <div className="text-2xl">{item.icon}</div>
-                    <div className="mt-2 text-sm font-extrabold sm:text-base">{item.label}</div>
-                    <div className={cx('mt-1 text-xs sm:text-sm', pageView === item.key ? 'text-white/80' : 'text-stone-500')}>
-                      {item.subLabel}
+        {profile.role === 'admin' && (
+          <section className="rounded-[28px] border border-white/60 bg-white/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px] sm:p-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <button
+                onClick={() => setPageView('orders')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'orders'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">📦</div>
+                <div className="mt-2 text-base font-extrabold">{t.currentOrders}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'orders' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? `المفتوحة ${counts.total} / المغلقة ${counts.closed}` : `Open ${counts.total} / Closed ${counts.closed}`}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setPageView('workers')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'workers'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">👷‍♂️</div>
+                <div className="mt-2 text-base font-extrabold">{t.currentWorkers}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'workers' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? `${workers.length} مستخدم` : `${workers.length} users`}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setPageView('create-worker')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'create-worker'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">➕</div>
+                <div className="mt-2 text-base font-extrabold">{t.addWorker}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'create-worker' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? 'إنشاء يوزر جديد' : 'Create a new user'}
+                </div>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
+          <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
+            {pageView === 'create-worker' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.addWorker}</h2>
+                  <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
+                </div>
+
+                <div className="grid gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-4 md:px-8">
+              <input
+                type="text"
+                value={workerName}
+                onChange={(e) => setWorkerName(e.target.value)}
+                placeholder={t.workerName}
+                className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+              />
+
+              <input
+                type="text"
+                value={workerUsername}
+                onChange={(e) => setWorkerUsername(e.target.value)}
+                placeholder={t.username}
+                className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+              />
+
+              <input
+                type="password"
+                value={workerPassword}
+                onChange={(e) => setWorkerPassword(e.target.value)}
+                placeholder={t.password}
+                className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+              />
+
+              <button
+                onClick={createWorker}
+                disabled={workerLoading}
+                className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {workerLoading ? t.addingWorker : t.addWorkerBtn}
+              </button>
+                </div>
+              </>
+            )}
+
+            {pageView === 'workers' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
+                  <p className="mt-1 text-sm text-stone-500">{t.actionSelectionHint}</p>
+                </div>
+
+                <div className="grid gap-3 px-4 pb-4 pt-4 sm:px-6 sm:pb-6 md:hidden">
+                  {workers.length === 0 && (
+                    <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                      {t.noWorkers}
                     </div>
-                  </button>
-                ))}
-              </div>
-            </aside>
+                  )}
 
-            <div className="space-y-4">
-              {pageView === 'create-worker' && (
-                <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-                  <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-                    <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.addWorker}</h2>
-                    <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
-                  </div>
-
-                  <div className="grid gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-4 md:px-8">
-                    <input
-                      type="text"
-                      value={workerName}
-                      onChange={(e) => setWorkerName(e.target.value)}
-                      placeholder={t.workerName}
-                      className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                    />
-
-                    <input
-                      type="text"
-                      value={workerUsername}
-                      onChange={(e) => setWorkerUsername(e.target.value)}
-                      placeholder={t.username}
-                      className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                    />
-
-                    <input
-                      type="password"
-                      value={workerPassword}
-                      onChange={(e) => setWorkerPassword(e.target.value)}
-                      placeholder={t.password}
-                      className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                    />
-
-                    <button
-                      onClick={createWorker}
-                      disabled={workerLoading}
-                      className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {workerLoading ? t.addingWorker : t.addWorkerBtn}
-                    </button>
-                  </div>
-                </section>
-              )}
-
-              {pageView === 'workers' && (
-                <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-                  <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-                    <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
-                    <p className="mt-1 text-sm text-stone-500">{t.actionSelectionHint}</p>
-                  </div>
-
-                  <div className="grid gap-3 px-4 pb-4 pt-4 sm:px-6 sm:pb-6 md:hidden">
-                    {workers.length === 0 && (
-                      <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
-                        {t.noWorkers}
+                  {workers.map((w) => (
+                    <div key={w.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+                      <div className="mb-3">
+                        <div className="text-lg font-extrabold text-stone-900">{w.full_name || '-'}</div>
+                        <div className="mt-1 text-sm text-stone-600">{w.username || w.email}</div>
+                        <div className="text-xs text-stone-400 break-all">{w.email}</div>
                       </div>
-                    )}
 
-                    {workers.map((w) => (
-                      <div key={w.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
-                        <div className="mb-3">
-                          <div className="text-lg font-extrabold text-stone-900">{w.full_name || '-'}</div>
-                          <div className="mt-1 text-sm text-stone-600">{w.username || w.email}</div>
-                          <div className="text-xs text-stone-400 break-all">{w.email}</div>
+                      <div className="grid gap-3">
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
+                          <InfoItem label={t.branch} value={getBranchLabel(workerBranchMap[w.id] ?? w.branch ?? '', currentLang, t)} />
                         </div>
 
-                        <div className="grid gap-3">
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
-                            <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
-                          </div>
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-stone-500">{t.actions}</label>
+                          <select
+                            value={workerActionMap[w.id] || ''}
+                            onChange={(e) =>
+                              setWorkerActionMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value as WorkerAction,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            <option value="">{t.selectAction}</option>
+                            <option value="reset-password">{t.resetPasswordAction}</option>
+                            <option value="change-role">{t.changeRoleAction}</option>
+                            <option value="change-branch">{t.changeBranchAction}</option>
+                            <option value="delete-user">{t.deleteUserAction}</option>
+                          </select>
+                        </div>
 
-                          <div>
-                            <label className="mb-2 block text-xs font-bold text-stone-500">{t.actions}</label>
+                        <button
+                          onClick={() => openWorkerActionPage(w)}
+                          className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
+                        >
+                          {t.continueAction}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto md:block">
+                  <table className={cx('min-w-full', isArabic ? 'text-right' : 'text-left')}>
+                    <thead className="bg-stone-50/90 text-sm text-stone-600">
+                      <tr>
+                        <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
+                        <th className="px-6 py-4 font-bold">{t.userName}</th>
+                        <th className="px-6 py-4 font-bold">{t.role}</th>
+                        <th className="px-6 py-4 font-bold">{t.branch}</th>
+                        <th className="px-6 py-4 font-bold">{t.actions}</th>
+                        <th className="px-6 py-4 font-bold md:px-8">{t.execute}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
+                      {workers.map((w) => (
+                        <tr key={w.id} className="transition hover:bg-stone-50/70">
+                          <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
+                          <td className="px-6 py-4 text-stone-600">
+                            <div>{w.username || w.email}</div>
+                            <div className="text-xs text-stone-400">{w.email}</div>
+                          </td>
+                          <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
+                          <td className="px-6 py-4">{getBranchLabel(workerBranchMap[w.id] ?? w.branch ?? '', currentLang, t)}</td>
+                          <td className="px-6 py-4">
                             <select
                               value={workerActionMap[w.id] || ''}
                               onChange={(e) =>
@@ -1532,338 +1552,215 @@ export default function Home() {
                                   [w.id]: e.target.value as WorkerAction,
                                 }))
                               }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                              className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[220px]"
                             >
                               <option value="">{t.selectAction}</option>
                               <option value="reset-password">{t.resetPasswordAction}</option>
                               <option value="change-role">{t.changeRoleAction}</option>
-                              <option value="change-language">{t.changeLanguageAction}</option>
                               <option value="change-branch">{t.changeBranchAction}</option>
                               <option value="delete-user">{t.deleteUserAction}</option>
                             </select>
-                          </div>
-
-                          <button
-                            onClick={() => openWorkerActionPage(w)}
-                            className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
-                          >
-                            {t.continueAction}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="hidden overflow-x-auto md:block">
-                    <table className={cx('min-w-full', isArabic ? 'text-right' : 'text-left')}>
-                      <thead className="bg-stone-50/90 text-sm text-stone-600">
-                        <tr>
-                          <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
-                          <th className="px-6 py-4 font-bold">{t.userName}</th>
-                          <th className="px-6 py-4 font-bold">{t.role}</th>
-                          <th className="px-6 py-4 font-bold">{t.branch}</th>
-                          <th className="px-6 py-4 font-bold">{t.actions}</th>
-                          <th className="px-6 py-4 font-bold md:px-8">{t.execute}</th>
+                          </td>
+                          <td className="px-6 py-4 md:px-8">
+                            <button
+                              onClick={() => openWorkerActionPage(w)}
+                              className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
+                            >
+                              {t.continueAction}
+                            </button>
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
-                        {workers.map((w) => (
-                          <tr key={w.id} className="transition hover:bg-stone-50/70">
-                            <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
-                            <td className="px-6 py-4 text-stone-600">
-                              <div>{w.username || w.email}</div>
-                              <div className="text-xs text-stone-400">{w.email}</div>
-                            </td>
-                            <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
-                            <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
-                            <td className="px-6 py-4">
-                              <select
-                                value={workerActionMap[w.id] || ''}
-                                onChange={(e) =>
-                                  setWorkerActionMap((prev) => ({
-                                    ...prev,
-                                    [w.id]: e.target.value as WorkerAction,
-                                  }))
-                                }
-                                className="min-w-[220px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
-                              >
-                                <option value="">{t.selectAction}</option>
-                                <option value="reset-password">{t.resetPasswordAction}</option>
-                                <option value="change-role">{t.changeRoleAction}</option>
-                                <option value="change-language">{t.changeLanguageAction}</option>
-                                <option value="change-branch">{t.changeBranchAction}</option>
-                                <option value="delete-user">{t.deleteUserAction}</option>
-                              </select>
-                            </td>
-                            <td className="px-6 py-4 md:px-8">
-                              <button
-                                onClick={() => openWorkerActionPage(w)}
-                                className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
-                              >
-                                {t.continueAction}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                      ))}
+                    </tbody>
+                  </table>
 
-                    {workers.length === 0 && (
-                      <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
-                    )}
-                  </div>
-                </section>
-              )}
+                  {workers.length === 0 && (
+                    <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
+                  )}
+                </div>
+              </>
+            )}
 
-              {pageView === 'worker-action' && (
-                <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-                  <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-lg font-extrabold text-stone-900">{t.workerActionTitle}</h3>
-                        <p className="mt-1 text-sm text-stone-500">{t.workerActionDesc}</p>
-                      </div>
-                      <button
-                        onClick={() => setPageView('workers')}
-                        className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-bold text-stone-700 ring-1 ring-stone-200 transition hover:bg-stone-200"
-                      >
-                        {t.backToWorkers}
-                      </button>
+            {pageView === 'worker-action' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-extrabold text-stone-900">{t.workerActionTitle}</h3>
+                      <p className="mt-1 text-sm text-stone-500">{t.workerActionDesc}</p>
                     </div>
+                    <button
+                      onClick={() => setPageView('workers')}
+                      className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-bold text-stone-700 ring-1 ring-stone-200 transition hover:bg-stone-200"
+                    >
+                      {t.backToWorkers}
+                    </button>
                   </div>
+                </div>
 
-                  {!selectedWorker ? (
-                    <div className="px-4 py-10 text-center text-stone-500 sm:px-6 md:px-8">{t.noWorkerSelected}</div>
-                  ) : (
-                    <div className="grid gap-4 px-4 py-4 sm:px-6 sm:py-6 xl:grid-cols-[minmax(0,1fr)_320px] md:px-8">
-                      <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
-                        <div>
-                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.actions}</label>
-                          <select
-                            value={workerActionMap[selectedWorker.id] || ''}
-                            onChange={(e) =>
-                              setWorkerActionMap((prev) => ({
-                                ...prev,
-                                [selectedWorker.id]: e.target.value as WorkerAction,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                          >
-                            <option value="">{t.selectAction}</option>
-                            <option value="reset-password">{t.resetPasswordAction}</option>
-                            <option value="change-role">{t.changeRoleAction}</option>
-                            <option value="change-language">{t.changeLanguageAction}</option>
-                            <option value="change-branch">{t.changeBranchAction}</option>
-                            <option value="delete-user">{t.deleteUserAction}</option>
-                          </select>
-                        </div>
+                {!selectedWorker ? (
+                  <div className="px-4 py-10 text-center text-stone-500 sm:px-6 md:px-8">{t.noWorkerSelected}</div>
+                ) : (
+                  <div className="grid gap-4 px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-[320px_minmax(0,1fr)] md:px-8">
+                    <div className="rounded-3xl border border-stone-200 bg-stone-50 p-5">
+                      <div className="text-sm font-bold text-stone-500">{t.workerInfo}</div>
+                      <div className="mt-3 text-xl font-extrabold text-stone-900">{selectedWorker.full_name || '-'}</div>
+                      <div className="mt-1 text-sm text-stone-600">{selectedWorker.username || selectedWorker.email}</div>
+                      <div className="mt-1 text-xs text-stone-400 break-all">{selectedWorker.email}</div>
 
-                        {(workerActionMap[selectedWorker.id] || '') === 'reset-password' && (
-                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <label className="mb-2 block text-sm font-bold text-stone-700">{t.newPassword}</label>
-                              <input
-                                type="password"
-                                value={resetPasswordMap[selectedWorker.id] || ''}
-                                onChange={(e) =>
-                                  setResetPasswordMap((prev) => ({
-                                    ...prev,
-                                    [selectedWorker.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder={t.newPassword}
-                                className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                              />
-                            </div>
-                            <div>
-                              <label className="mb-2 block text-sm font-bold text-stone-700">{t.confirmPassword}</label>
-                              <input
-                                type="password"
-                                value={confirmPasswordMap[selectedWorker.id] || ''}
-                                onChange={(e) =>
-                                  setConfirmPasswordMap((prev) => ({
-                                    ...prev,
-                                    [selectedWorker.id]: e.target.value,
-                                  }))
-                                }
-                                placeholder={t.confirmPassword}
-                                className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                              />
-                            </div>
-                          </div>
-                        )}
+                      <div className="mt-5 space-y-3 text-sm">
+                        <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
+                        <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
+                        <InfoItem label={t.currentBranch} value={getBranchLabel(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '', currentLang, t)} />
+                      </div>
+                    </div>
 
-                        {(workerActionMap[selectedWorker.id] || '') === 'change-role' && (
-                          <div className="mt-4">
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.role}</label>
-                            <select
-                              value={workerRoleMap[selectedWorker.id] || selectedWorker.role}
+                    <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-stone-700">{t.actions}</label>
+                        <select
+                          value={workerActionMap[selectedWorker.id] || ''}
+                          onChange={(e) =>
+                            setWorkerActionMap((prev) => ({
+                              ...prev,
+                              [selectedWorker.id]: e.target.value as WorkerAction,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="">{t.selectAction}</option>
+                          <option value="reset-password">{t.resetPasswordAction}</option>
+                          <option value="change-role">{t.changeRoleAction}</option>
+                          <option value="change-branch">{t.changeBranchAction}</option>
+                          <option value="delete-user">{t.deleteUserAction}</option>
+                        </select>
+                      </div>
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'reset-password' && (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.newPassword}</label>
+                            <input
+                              type="password"
+                              value={resetPasswordMap[selectedWorker.id] || ''}
                               onChange={(e) =>
-                                setWorkerRoleMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value as Role,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              <option value="worker">{t.worker}</option>
-                              <option value="admin">{t.admin}</option>
-                            </select>
-                          </div>
-                        )}
-
-                        {(workerActionMap[selectedWorker.id] || '') === 'change-language' && (
-                          <div className="mt-4">
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
-                            <select
-                              value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
-                              onChange={(e) =>
-                                setWorkerLanguageMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value as Language,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              <option value="ar">{t.arabic}</option>
-                              <option value="en">{t.english}</option>
-                            </select>
-                          </div>
-                        )}
-
-                        {(workerActionMap[selectedWorker.id] || '') === 'change-branch' && (
-                          <div className="mt-4">
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
-                            <select
-                              value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
-                              onChange={(e) =>
-                                setWorkerBranchMap((prev) => ({
+                                setResetPasswordMap((prev) => ({
                                   ...prev,
                                   [selectedWorker.id]: e.target.value,
                                 }))
                               }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
-                              {BRANCH_OPTIONS.map((branchOption) => (
-                                <option key={branchOption.value} value={branchOption.value}>
-                                  {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                                </option>
-                              ))}
-                            </select>
+                              placeholder={t.newPassword}
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                            />
                           </div>
-                        )}
-
-                        {(workerActionMap[selectedWorker.id] || '') === 'delete-user' && (
-                          <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
-                            {t.deleteWarning}
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.confirmPassword}</label>
+                            <input
+                              type="password"
+                              value={confirmPasswordMap[selectedWorker.id] || ''}
+                              onChange={(e) =>
+                                setConfirmPasswordMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value,
+                                }))
+                              }
+                              placeholder={t.confirmPassword}
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                            />
                           </div>
-                        )}
+                        </div>
+                      )}
 
-                        <div className="mt-5 flex justify-end">
-                          <button
-                            onClick={executeSelectedWorkerAction}
-                            disabled={
-                              resettingWorkerId === selectedWorker.id ||
-                              changingRoleId === selectedWorker.id ||
-                              savingWorkerId === selectedWorker.id ||
-                              deletingWorkerId === selectedWorker.id
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-role' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.role}</label>
+                          <select
+                            value={workerRoleMap[selectedWorker.id] || selectedWorker.role}
+                            onChange={(e) =>
+                              setWorkerRoleMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value as Role,
+                              }))
                             }
-                            className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
                           >
-                            {resettingWorkerId === selectedWorker.id || changingRoleId === selectedWorker.id || savingWorkerId === selectedWorker.id || deletingWorkerId === selectedWorker.id
-                              ? t.executing
-                              : t.execute}
-                          </button>
+                            <option value="worker">{t.worker}</option>
+                            <option value="admin">{t.admin}</option>
+                          </select>
                         </div>
-                      </div>
+                      )}
 
-                      <div className="rounded-3xl border border-stone-200 bg-stone-50 p-5">
-                        <div className="text-sm font-bold text-stone-500">{t.workerInfo}</div>
-                        <div className="mt-3 text-xl font-extrabold text-stone-900">{selectedWorker.full_name || '-'}</div>
-                        <div className="mt-1 text-sm text-stone-600">{selectedWorker.username || selectedWorker.email}</div>
-                        <div className="mt-1 break-all text-xs text-stone-400">{selectedWorker.email}</div>
-
-                        <div className="mt-5 space-y-3 text-sm">
-                          <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
-                          <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
-                          <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </section>
-              )}
-
-              {pageView === 'orders' && (
-                <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-                  <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                      <div>
-                        <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.currentOrders}</h2>
-                        <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
-                      </div>
-
-                      <div className="flex w-full flex-col gap-3 lg:w-[540px]">
-                        <input
-                          type="text"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                          placeholder={t.searchPlaceholder}
-                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                        />
-
-                        <div className="flex justify-end">
-                          <button
-                            onClick={() => setShowClosedOrders((prev) => !prev)}
-                            className={cx(
-                              'rounded-2xl px-4 py-2 text-sm font-bold shadow-sm transition',
-                              showClosedOrders
-                                ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                                : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
-                            )}
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-branch' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
+                          <select
+                            value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
+                            onChange={(e) =>
+                              setWorkerBranchMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
                           >
-                            {showClosedOrders ? t.hideClosedOrders : t.showClosedOrders}
-                          </button>
+                            {BRANCH_OPTIONS.map((branchOption) => (
+                              <option key={branchOption.value} value={branchOption.value}>
+                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                              </option>
+                            ))}
+                          </select>
                         </div>
+                      )}
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'delete-user' && (
+                        <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
+                          {t.deleteWarning}
+                        </div>
+                      )}
+
+                      <div className="mt-5 flex justify-end">
+                        <button
+                          onClick={executeSelectedWorkerAction}
+                          disabled={
+                            resettingWorkerId === selectedWorker.id ||
+                            changingRoleId === selectedWorker.id ||
+                            savingWorkerId === selectedWorker.id ||
+                            deletingWorkerId === selectedWorker.id
+                          }
+                          className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {resettingWorkerId === selectedWorker.id || changingRoleId === selectedWorker.id || savingWorkerId === selectedWorker.id || deletingWorkerId === selectedWorker.id
+                            ? t.executing
+                            : t.execute}
+                        </button>
                       </div>
                     </div>
                   </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
 
-                  <OrdersSection
-                    orders={ordersToRender}
-                    allOrders={orders}
-                    busyId={busyId}
-                    profileRole={profile.role}
-                    updateStatus={updateStatus}
-                    t={t}
-                    currentLang={currentLang}
-                    isArabic={isArabic}
-                    statusLabels={statusLabels}
-                    statusStyles={statusStyles}
-                  />
-                </section>
-              )}
-            </div>
-          </div>
-        ) : (
+        {((profile.role === 'worker') || (profile.role === 'admin' && pageView === 'orders')) && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-            <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.currentOrders}</h2>
-                  <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
-                </div>
+          <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.currentOrders}</h2>
+                <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
+              </div>
 
-                <div className="flex w-full flex-col gap-3 lg:w-[540px]">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t.searchPlaceholder}
-                    className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                  />
+              <div className="flex w-full flex-col gap-3 lg:w-[540px]">
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t.searchPlaceholder}
+                  className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                />
 
+                {profile.role === 'worker' && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="grid grid-cols-3 gap-2">
                       {workerTabs.map((tab) => (
@@ -1897,177 +1794,45 @@ export default function Home() {
                       {isArabic ? `التحديث التلقائي: ${autoRefresh ? 'شغال' : 'موقف'}` : `Auto refresh: ${autoRefresh ? 'On' : 'Off'}`}
                     </button>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            <OrdersSection
-              orders={ordersToRender}
-              allOrders={orders}
-              busyId={busyId}
-              profileRole={profile.role}
-              updateStatus={updateStatus}
-              t={t}
-              currentLang={currentLang}
-              isArabic={isArabic}
-              statusLabels={statusLabels}
-              statusStyles={statusStyles}
-            />
-          </section>
-        )}
-      </div>
-    </main>
-  );
-}
-
-function OrdersSection({
-  orders,
-  allOrders,
-  busyId,
-  profileRole,
-  updateStatus,
-  t,
-  currentLang,
-  isArabic,
-  statusLabels,
-  statusStyles,
-}: {
-  orders: Order[];
-  allOrders: Order[];
-  busyId: number | null;
-  profileRole: Role;
-  updateStatus: (id: number, status: string) => Promise<void>;
-  t: TranslationMap;
-  currentLang: Language;
-  isArabic: boolean;
-  statusLabels: Record<string, string>;
-  statusStyles: Record<string, string>;
-}) {
-  return (
-    <>
-      <div className="grid gap-3 px-4 py-4 sm:px-6 md:hidden">
-        {orders.map((o) => (
-          <div
-            key={o.id}
-            className={cx(
-              'rounded-3xl border bg-white p-4 shadow-sm',
-              o.status === 'new' ? 'border-amber-200 ring-2 ring-amber-100' : 'border-stone-200'
-            )}
-          >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <div className="text-sm text-stone-500">{t.invoice}</div>
-                <div className="text-lg font-extrabold text-stone-900">#{o.receipt_number}</div>
-                <div className="mt-1 text-xs font-bold text-stone-500">
-                  {formatOrderAge(o.created_at, currentLang)} • {formatOrderTime(o.created_at, currentLang)}
-                </div>
-              </div>
-              <span
-                className={cx(
-                  'inline-flex rounded-full px-3 py-1 text-xs font-bold',
-                  statusStyles[o.status] || 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
                 )}
-              >
-                {statusLabels[o.status] || o.status}
-              </span>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <InfoItem label={t.customer} value={o.customer_name || '-'} />
-              <InfoItem label={t.phone} value={o.phone || '-'} dir="ltr" />
-              <InfoItem label={t.branch} value={o.branch || '-'} />
-              <InfoItem label={isArabic ? 'وقت الطلب' : 'Order time'} value={`${formatOrderAge(o.created_at, currentLang)}`} />
-            </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {o.status === 'closed' && profileRole === 'admin' ? (
-                <button
-                  onClick={() => updateStatus(o.id, 'ready')}
-                  disabled={busyId === o.id}
-                  className="col-span-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {busyId === o.id ? t.updating : t.restoreReady}
-                </button>
-              ) : (
-                <>
-                  {o.status !== 'closed' && (
+                {profile.role === 'admin' && (
+                  <div className="flex justify-end">
                     <button
-                      onClick={() => updateStatus(o.id, 'ready')}
-                      disabled={busyId === o.id || o.status === 'ready'}
+                      onClick={() => setShowClosedOrders((prev) => !prev)}
                       className={cx(
-                        'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
-                        o.status === 'ready' ? 'cursor-not-allowed bg-stone-400' : 'bg-sky-600 hover:bg-sky-700'
+                        'rounded-2xl px-4 py-2 text-sm font-bold shadow-sm transition',
+                        showClosedOrders
+                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
+                          : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
                       )}
                     >
-                      {busyId === o.id && o.status !== 'ready'
-                        ? t.updating
-                        : o.status === 'ready'
-                        ? `${t.ready} ✔️`
-                        : t.ready}
+                      {showClosedOrders ? t.hideClosedOrders : t.showClosedOrders}
                     </button>
-                  )}
-
-                  <button
-                    onClick={() => updateStatus(o.id, 'closed')}
-                    disabled={busyId === o.id || o.status !== 'ready'}
-                    className={cx(
-                      'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
-                      o.status === 'closed'
-                        ? 'cursor-not-allowed bg-stone-400'
-                        : o.status !== 'ready'
-                        ? 'cursor-not-allowed bg-stone-300'
-                        : 'bg-emerald-600 hover:bg-emerald-700'
-                    )}
-                  >
-                    {busyId === o.id && o.status === 'ready'
-                      ? t.updating
-                      : o.status === 'closed'
-                      ? `${t.delivered} ✔️`
-                      : t.delivered}
-                  </button>
-                </>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        ))}
 
-        {orders.length === 0 && allOrders.length > 0 && (
-          <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
-            {t.noMatchingOrders}
-          </div>
-        )}
-
-        {allOrders.length === 0 && (
-          <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
-            {t.noOrders}
-          </div>
-        )}
-      </div>
-
-      <div className="hidden overflow-x-auto md:block">
-        <table className={cx('min-w-full', isArabic ? 'text-right' : 'text-left')}>
-          <thead className="bg-stone-50/90 text-sm text-stone-600">
-            <tr>
-              <th className="px-6 py-4 font-bold md:px-8">{t.invoice}</th>
-              <th className="px-6 py-4 font-bold">{t.customer}</th>
-              <th className="px-6 py-4 font-bold">{t.phone}</th>
-              <th className="px-6 py-4 font-bold">{t.branch}</th>
-              <th className="px-6 py-4 font-bold">{t.status}</th>
-              <th className="px-6 py-4 font-bold md:px-8">{t.actions}</th>
-            </tr>
-          </thead>
-
-          <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
-            {orders.map((o) => (
-              <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40', o.status === 'closed' && 'bg-stone-100/70')}>
-                <td className="px-6 py-4 md:px-8">
-                  <div className="font-extrabold text-stone-900">#{o.receipt_number}</div>
-                  <div className="mt-1 text-xs font-bold text-stone-500">{formatOrderAge(o.created_at, currentLang)}</div>
-                </td>
-                <td className="px-6 py-4 font-semibold">{o.customer_name || '-'}</td>
-                <td className="px-6 py-4 text-stone-600" dir="ltr">{o.phone || '-'}</td>
-                <td className="px-6 py-4">{o.branch || '-'}</td>
-                <td className="px-6 py-4">
+          <div className="grid gap-3 px-4 py-4 sm:px-6 md:hidden">
+            {ordersToRender.map((o) => (
+              <div
+                key={o.id}
+                className={cx(
+                  'rounded-3xl border bg-white p-4 shadow-sm',
+                  o.status === 'new' ? 'border-amber-200 ring-2 ring-amber-100' : 'border-stone-200'
+                )}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-stone-500">{t.invoice}</div>
+                    <div className="text-lg font-extrabold text-stone-900">#{o.receipt_number}</div>
+                    <div className="mt-1 text-xs font-bold text-stone-500">
+                      {formatOrderAge(o.created_at, currentLang)} • {formatOrderTime(o.created_at, currentLang)}
+                    </div>
+                  </div>
                   <span
                     className={cx(
                       'inline-flex rounded-full px-3 py-1 text-xs font-bold',
@@ -2076,72 +1841,188 @@ function OrdersSection({
                   >
                     {statusLabels[o.status] || o.status}
                   </span>
-                </td>
-                <td className="px-6 py-4 md:px-8">
-                  <div className="flex flex-wrap gap-2">
-                    {o.status === 'closed' && profileRole === 'admin' ? (
-                      <button
-                        onClick={() => updateStatus(o.id, 'ready')}
-                        disabled={busyId === o.id}
-                        className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {busyId === o.id ? t.updating : t.restoreReady}
-                      </button>
-                    ) : (
-                      <>
-                        {o.status !== 'closed' && (
-                          <button
-                            onClick={() => updateStatus(o.id, 'ready')}
-                            disabled={busyId === o.id || o.status === 'ready'}
-                            className={cx(
-                              'rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-sm transition',
-                              o.status === 'ready' ? 'cursor-not-allowed bg-stone-400' : 'bg-sky-600 hover:bg-sky-700'
-                            )}
-                          >
-                            {busyId === o.id && o.status !== 'ready'
-                              ? t.updating
-                              : o.status === 'ready'
-                              ? `${t.ready} ✔️`
-                              : t.ready}
-                          </button>
-                        )}
+                </div>
 
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <InfoItem label={t.customer} value={o.customer_name || '-'} />
+                  <InfoItem label={t.phone} value={o.phone || '-'} dir="ltr" />
+                  <InfoItem label={t.branch} value={o.branch || '-'} />
+                  <InfoItem
+                    label={isArabic ? 'وقت الطلب' : 'Order time'}
+                    value={`${formatOrderAge(o.created_at, currentLang)}`}
+                  />
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {o.status === 'closed' && profile.role === 'admin' ? (
+                    <button
+                      onClick={() => updateStatus(o.id, 'ready')}
+                      disabled={busyId === o.id}
+                      className="col-span-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {busyId === o.id ? t.updating : t.restoreReady}
+                    </button>
+                  ) : (
+                    <>
+                      {o.status !== 'closed' && (
                         <button
-                          onClick={() => updateStatus(o.id, 'closed')}
-                          disabled={busyId === o.id || o.status !== 'ready'}
+                          onClick={() => updateStatus(o.id, 'ready')}
+                          disabled={busyId === o.id || o.status === 'ready'}
                           className={cx(
-                            'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
-                            o.status === 'closed'
+                            'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
+                            o.status === 'ready'
                               ? 'cursor-not-allowed bg-stone-400'
-                              : o.status !== 'ready'
-                              ? 'cursor-not-allowed bg-stone-300'
-                              : 'bg-emerald-600 hover:bg-emerald-700'
+                              : 'bg-sky-600 hover:bg-sky-700'
                           )}
                         >
-                          {busyId === o.id && o.status === 'ready'
+                          {busyId === o.id && o.status !== 'ready'
                             ? t.updating
-                            : o.status === 'closed'
-                            ? `${t.delivered} ✔️`
-                            : t.delivered}
+                            : o.status === 'ready'
+                            ? `${t.ready} ✔️`
+                            : t.ready}
                         </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
+                      )}
+
+                      <button
+                        onClick={() => updateStatus(o.id, 'closed')}
+                        disabled={busyId === o.id || o.status !== 'ready'}
+                        className={cx(
+                          'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
+                          o.status === 'closed'
+                            ? 'cursor-not-allowed bg-stone-400'
+                            : o.status !== 'ready'
+                            ? 'cursor-not-allowed bg-stone-300'
+                            : 'bg-emerald-600 hover:bg-emerald-700'
+                        )}
+                      >
+                        {busyId === o.id && o.status === 'ready'
+                          ? t.updating
+                          : o.status === 'closed'
+                          ? `${t.delivered} ✔️`
+                          : t.delivered}
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
 
-        {orders.length === 0 && allOrders.length > 0 && (
-          <div className="px-6 py-10 text-center text-stone-500">{t.noMatchingOrders}</div>
-        )}
+            {ordersToRender.length === 0 && orders.length > 0 && (
+              <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                {t.noMatchingOrders}
+              </div>
+            )}
 
-        {allOrders.length === 0 && (
-          <div className="px-6 py-10 text-center text-stone-500">{t.noOrders}</div>
+            {orders.length === 0 && (
+              <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                {t.noOrders}
+              </div>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
+            <table className={cx("min-w-full", isArabic ? "text-right" : "text-left")}>
+              <thead className="bg-stone-50/90 text-sm text-stone-600">
+                <tr>
+                  <th className="px-6 py-4 font-bold md:px-8">{t.invoice}</th>
+                  <th className="px-6 py-4 font-bold">{t.customer}</th>
+                  <th className="px-6 py-4 font-bold">{t.phone}</th>
+                  <th className="px-6 py-4 font-bold">{t.branch}</th>
+                  <th className="px-6 py-4 font-bold">{t.status}</th>
+                  <th className="px-6 py-4 font-bold md:px-8">{t.actions}</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
+                {ordersToRender.map((o) => (
+                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40', o.status === 'closed' && 'bg-stone-100/70')}>
+                    <td className="px-6 py-4 md:px-8">
+                      <div className="font-extrabold text-stone-900">#{o.receipt_number}</div>
+                      <div className="mt-1 text-xs font-bold text-stone-500">{formatOrderAge(o.created_at, currentLang)}</div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold">{o.customer_name || '-'}</td>
+                    <td className="px-6 py-4 text-stone-600" dir="ltr">{o.phone || '-'}</td>
+                    <td className="px-6 py-4">{o.branch || '-'}</td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={cx(
+                          'inline-flex rounded-full px-3 py-1 text-xs font-bold',
+                          statusStyles[o.status] || 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
+                        )}
+                      >
+                        {statusLabels[o.status] || o.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 md:px-8">
+                      <div className="flex flex-wrap gap-2">
+                        {o.status === 'closed' && profile.role === 'admin' ? (
+                          <button
+                            onClick={() => updateStatus(o.id, 'ready')}
+                            disabled={busyId === o.id}
+                            className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {busyId === o.id ? t.updating : t.restoreReady}
+                          </button>
+                        ) : (
+                          <>
+                            {o.status !== 'closed' && (
+                              <button
+                                onClick={() => updateStatus(o.id, 'ready')}
+                                disabled={busyId === o.id || o.status === 'ready'}
+                                className={cx(
+                                  'rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-sm transition',
+                                  o.status === 'ready'
+                                    ? 'cursor-not-allowed bg-stone-400'
+                                    : 'bg-sky-600 hover:bg-sky-700'
+                                )}
+                              >
+                                {busyId === o.id && o.status !== 'ready'
+                                  ? t.updating
+                                  : o.status === 'ready'
+                                  ? `${t.ready} ✔️`
+                                  : t.ready}
+                              </button>
+                            )}
+
+                            <button
+                              onClick={() => updateStatus(o.id, 'closed')}
+                              disabled={busyId === o.id || o.status !== 'ready'}
+                              className={cx(
+                                'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
+                                o.status === 'closed'
+                                  ? 'cursor-not-allowed bg-stone-400'
+                                  : o.status !== 'ready'
+                                  ? 'cursor-not-allowed bg-stone-300'
+                                  : 'bg-emerald-600 hover:bg-emerald-700'
+                              )}
+                            >
+                              {busyId === o.id && o.status === 'ready'
+                                ? t.updating
+                                : o.status === 'closed'
+                                ? `${t.delivered} ✔️`
+                                : t.delivered}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {ordersToRender.length === 0 && orders.length > 0 && (
+              <div className="px-6 py-10 text-center text-stone-500">{t.noMatchingOrders}</div>
+            )}
+
+            {orders.length === 0 && (
+              <div className="px-6 py-10 text-center text-stone-500">{t.noOrders}</div>
+            )}
+          </div>
+        </section>
         )}
       </div>
-    </>
+    </main>
   );
 }
 
