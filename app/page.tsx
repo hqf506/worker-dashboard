@@ -336,11 +336,11 @@ export default function Home() {
     return { data: (data as Profile | null) ?? null, error: null };
   };
 
-  const fetchProfileWithRetry = async (userId: string) => {
+  const fetchProfileWithRetry = async (userId: string, useRetry = true) => {
   setProfileLoading(true);
 
   try {
-    const delays = [0, 400];
+    const delays = useRetry ? [0, 400, 900] : [0];
 
     for (let i = 0; i < delays.length; i++) {
       if (delays[i] > 0) await sleep(delays[i]);
@@ -408,36 +408,33 @@ export default function Home() {
   };
 
   const login = async () => {
-    if (!loginUsername.trim() || !loginPassword.trim()) {
-      showMessage('error', t.enterCredentials);
+  if (!loginUsername.trim() || !loginPassword.trim()) {
+    showMessage('error', t.enterCredentials);
+    return;
+  }
+
+  setLoginLoading(true);
+  setProfile(null);
+
+  try {
+    const fakeEmail = usernameToEmail(loginUsername);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: fakeEmail,
+      password: loginPassword,
+    });
+
+    if (error) {
+      showMessage('error', error.message || t.loginError);
       return;
     }
 
-    setLoginLoading(true);
-    setProfile(null);
-    setProfileLoading(true);
-
-    try {
-      const fakeEmail = usernameToEmail(loginUsername);
-      const { error } = await supabase.auth.signInWithPassword({
-        email: fakeEmail,
-        password: loginPassword,
-      });
-
-      if (error) {
-        setProfileLoading(false);
-        showMessage('error', error.message || t.loginError);
-        return;
-      }
-
-      showMessage('success', t.loginSuccess);
-    } catch {
-      setProfileLoading(false);
-      showMessage('error', t.loginError);
-    } finally {
-      setLoginLoading(false);
-    }
-  };
+    showMessage('success', t.loginSuccess);
+  } catch {
+    showMessage('error', t.loginError);
+  } finally {
+    setLoginLoading(false);
+  }
+};
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -707,7 +704,7 @@ export default function Home() {
         }
 
         setUser(currentUser);
-        const currentProfile = await fetchProfileWithRetry(currentUser.id);
+        const currentProfile = await fetchProfileWithRetry(currentUser.id, false);
 
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
@@ -729,23 +726,24 @@ export default function Home() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
-      if (currentUser) {
-        const currentProfile = await fetchProfileWithRetry(currentUser.id);
+  if (currentUser) {
+  const useRetry = _event === 'SIGNED_IN';
+  const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry);
 
-        if (currentProfile?.role === 'admin') {
-          await fetchWorkers(currentProfile);
-        } else {
-          setWorkers([]);
-        }
+  if (currentProfile?.role === 'admin') {
+    await fetchWorkers(currentProfile);
+  } else {
+    setWorkers([]);
+  }
 
-        if (currentProfile) {
-          await fetchOrders(true, currentProfile);
-        }
-      } else {
-        setProfile(null);
-        setProfileLoading(false);
-        setWorkers([]);
-      }
+  if (currentProfile) {
+    await fetchOrders(true, currentProfile);
+  }
+} else {
+  setProfile(null);
+  setProfileLoading(false);
+  setWorkers([]);
+}
 
       setAuthLoading(false);
     });
