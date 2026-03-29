@@ -20,6 +20,7 @@ type Order = {
 
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
+type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
 
 type Profile = {
   id: string;
@@ -35,6 +36,7 @@ type Profile = {
 const translations = {
   ar: {
     loading: 'جاري التحميل...',
+    loadingProfile: 'جاري تجهيز الحساب...',
     login: 'تسجيل الدخول',
     panel: 'لوحة العامل والإدارة',
     username: 'اسم المستخدم',
@@ -117,9 +119,18 @@ const translations = {
     newStatus: 'جديد',
     readyStatus: 'تم التجهيز',
     closedStatus: 'تم التسليم',
+    selectAction: 'اختر الإجراء',
+    execute: 'تنفيذ',
+    executing: 'جاري التنفيذ...',
+    resetPasswordAction: 'إعادة تعيين كلمة المرور',
+    changeRoleAction: 'تغيير الصلاحية',
+    saveSettingsAction: 'حفظ اللغة والفرع',
+    deleteUserAction: 'حذف اليوزر',
+    selectActionFirst: 'اختر الإجراء أولاً',
   },
   en: {
     loading: 'Loading...',
+    loadingProfile: 'Preparing account...',
     login: 'Login',
     panel: 'Worker & Admin Panel',
     username: 'Username',
@@ -202,6 +213,14 @@ const translations = {
     newStatus: 'New',
     readyStatus: 'Ready',
     closedStatus: 'Delivered',
+    selectAction: 'Select Action',
+    execute: 'Execute',
+    executing: 'Executing...',
+    resetPasswordAction: 'Reset Password',
+    changeRoleAction: 'Change Role',
+    saveSettingsAction: 'Save Language & Branch',
+    deleteUserAction: 'Delete User',
+    selectActionFirst: 'Select an action first',
   },
 } as const;
 
@@ -214,7 +233,7 @@ const usernameToEmail = (username: string) => {
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 
-const branchOptions = ['فرع الصحافة', 'فرع الروضة'];
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -225,6 +244,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
 
   const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
@@ -244,6 +264,7 @@ export default function Home() {
   const [workerRoleMap, setWorkerRoleMap] = useState<Record<string, Role>>({});
   const [workerLanguageMap, setWorkerLanguageMap] = useState<Record<string, Language>>({});
   const [workerBranchMap, setWorkerBranchMap] = useState<Record<string, string>>({});
+  const [workerActionMap, setWorkerActionMap] = useState<Record<string, WorkerAction>>({});
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -281,42 +302,74 @@ export default function Home() {
     const nextRoleMap: Record<string, Role> = {};
     const nextLanguageMap: Record<string, Language> = {};
     const nextBranchMap: Record<string, string> = {};
+    const nextActionMap: Record<string, WorkerAction> = {};
 
     list.forEach((w) => {
       nextRoleMap[w.id] = w.role;
       nextLanguageMap[w.id] = w.language === 'en' ? 'en' : 'ar';
       nextBranchMap[w.id] = w.branch || '';
+      nextActionMap[w.id] = '';
     });
 
     setWorkerRoleMap(nextRoleMap);
     setWorkerLanguageMap(nextLanguageMap);
     setWorkerBranchMap(nextBranchMap);
+    setWorkerActionMap(nextActionMap);
   };
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfileOnce = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
 
-    if (error || !data) {
-      setProfile(null);
-      return null;
+    if (error) {
+      return { data: null, error };
     }
 
-    setProfile(data as Profile);
-    return data as Profile;
+    return { data: (data as Profile | null) ?? null, error: null };
   };
 
-  const fetchOrders = async (silent = false) => {
+  const fetchProfileWithRetry = async (userId: string) => {
+    setProfileLoading(true);
+
+    try {
+      const delays = [0, 600, 1200, 2000];
+
+      for (let i = 0; i < delays.length; i++) {
+        if (delays[i] > 0) {
+          await sleep(delays[i]);
+        }
+
+        const { data, error } = await fetchProfileOnce(userId);
+
+        if (data) {
+          setProfile(data);
+          return data;
+        }
+
+        if (error) {
+          console.error('PROFILE FETCH ERROR:', error);
+        }
+      }
+
+      setProfile(null);
+      return null;
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
     if (!silent) setRefreshingOrders(true);
 
     try {
+      const activeProfile = profileOverride ?? profile;
       let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
-      if (profile?.role === 'worker' && profile?.branch) {
-        query = query.eq('branch', profile.branch);
+      if (activeProfile?.role === 'worker' && activeProfile?.branch) {
+        query = query.eq('branch', activeProfile.branch);
       }
 
       const { data, error } = await query;
@@ -342,13 +395,13 @@ export default function Home() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      showMessage('error', 'تعذر تحميل قائمة المستخدمين');
+      showMessage('error', isArabic ? 'تعذر تحميل قائمة المستخدمين' : 'Unable to load users list');
       return;
     }
 
-    const list = (data as Profile[]) || [];
-    setWorkers(list.filter((x) => x.id !== activeProfile.id));
-    hydrateWorkerMaps(list.filter((x) => x.id !== activeProfile.id));
+    const list = ((data as Profile[]) || []).filter((x) => x.id !== activeProfile.id);
+    setWorkers(list);
+    hydrateWorkerMaps(list);
   };
 
   const login = async () => {
@@ -358,6 +411,8 @@ export default function Home() {
     }
 
     setLoginLoading(true);
+    setProfile(null);
+    setProfileLoading(true);
 
     try {
       const fakeEmail = usernameToEmail(loginUsername);
@@ -367,12 +422,14 @@ export default function Home() {
       });
 
       if (error) {
+        setProfileLoading(false);
         showMessage('error', error.message || t.loginError);
         return;
       }
 
       showMessage('success', t.loginSuccess);
     } catch {
+      setProfileLoading(false);
       showMessage('error', t.loginError);
     } finally {
       setLoginLoading(false);
@@ -622,6 +679,35 @@ export default function Home() {
     }
   };
 
+  const runWorkerAction = async (worker: Profile) => {
+    const action = workerActionMap[worker.id] || '';
+
+    if (!action) {
+      showMessage('error', t.selectActionFirst);
+      return;
+    }
+
+    if (action === 'reset-password') {
+      await resetWorkerPassword(worker);
+      return;
+    }
+
+    if (action === 'change-role') {
+      await changeWorkerRole(worker);
+      return;
+    }
+
+    if (action === 'save-settings') {
+      await saveWorkerSettings(worker);
+      return;
+    }
+
+    if (action === 'delete-user') {
+      await deleteWorker(worker);
+      return;
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -632,15 +718,20 @@ export default function Home() {
         if (!currentUser) {
           setUser(null);
           setProfile(null);
+          setProfileLoading(false);
           setAuthLoading(false);
           return;
         }
 
         setUser(currentUser);
-        const currentProfile = await fetchProfile(currentUser.id);
+        const currentProfile = await fetchProfileWithRetry(currentUser.id);
 
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
+        }
+
+        if (currentProfile) {
+          await fetchOrders(true, currentProfile);
         }
       } finally {
         setAuthLoading(false);
@@ -656,14 +747,20 @@ export default function Home() {
       setUser(currentUser);
 
       if (currentUser) {
-        const currentProfile = await fetchProfile(currentUser.id);
+        const currentProfile = await fetchProfileWithRetry(currentUser.id);
+
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
         } else {
           setWorkers([]);
         }
+
+        if (currentProfile) {
+          await fetchOrders(true, currentProfile);
+        }
       } else {
         setProfile(null);
+        setProfileLoading(false);
         setWorkers([]);
       }
 
@@ -679,14 +776,14 @@ export default function Home() {
   useEffect(() => {
     if (!user || !profile) return;
 
-    fetchOrders(true);
+    fetchOrders(true, profile);
 
     const channel = supabase
       .channel('orders-channel')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => fetchOrders(true)
+        () => fetchOrders(true, profile)
       )
       .subscribe();
 
@@ -728,14 +825,14 @@ export default function Home() {
     );
   }, [visibleOrders, search, statusLabels]);
 
-  if (authLoading) {
+  if (authLoading || profileLoading) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
         <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {t.loading}
+          {profileLoading ? t.loadingProfile : t.loading}
         </div>
       </main>
     );
@@ -1021,37 +1118,40 @@ export default function Home() {
                       </td>
 
                       <td className="px-6 py-4 md:px-8">
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            onClick={() => resetWorkerPassword(w)}
-                            disabled={resettingWorkerId === w.id}
-                            className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={workerActionMap[w.id] || ''}
+                            onChange={(e) =>
+                              setWorkerActionMap((prev) => ({
+                                ...prev,
+                                [w.id]: e.target.value as WorkerAction,
+                              }))
+                            }
+                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[190px]"
                           >
-                            {resettingWorkerId === w.id ? t.changingPassword : t.resetPassword}
-                          </button>
+                            <option value="">{t.selectAction}</option>
+                            <option value="reset-password">{t.resetPasswordAction}</option>
+                            <option value="change-role">{t.changeRoleAction}</option>
+                            <option value="save-settings">{t.saveSettingsAction}</option>
+                            <option value="delete-user">{t.deleteUserAction}</option>
+                          </select>
 
                           <button
-                            onClick={() => changeWorkerRole(w)}
-                            disabled={changingRoleId === w.id}
-                            className="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {changingRoleId === w.id ? t.changingRole : t.changeRole}
-                          </button>
-
-                          <button
-                            onClick={() => saveWorkerSettings(w)}
-                            disabled={savingWorkerId === w.id}
+                            onClick={() => runWorkerAction(w)}
+                            disabled={
+                              resettingWorkerId === w.id ||
+                              changingRoleId === w.id ||
+                              savingWorkerId === w.id ||
+                              deletingWorkerId === w.id
+                            }
                             className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {savingWorkerId === w.id ? t.saving : t.saveBranchLang}
-                          </button>
-
-                          <button
-                            onClick={() => deleteWorker(w)}
-                            disabled={deletingWorkerId === w.id}
-                            className="rounded-2xl bg-rose-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingWorkerId === w.id ? t.deleting : t.deleteUser}
+                            {resettingWorkerId === w.id ||
+                            changingRoleId === w.id ||
+                            savingWorkerId === w.id ||
+                            deletingWorkerId === w.id
+                              ? t.executing
+                              : t.execute}
                           </button>
                         </div>
                       </td>
