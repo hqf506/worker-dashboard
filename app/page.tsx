@@ -56,10 +56,6 @@ const translations = {
     newOrders: 'طلبات جديدة',
     readyOrders: 'تم التجهيز',
     deliveredOrders: 'تم التسليم',
-    showClosedOrders: 'عرض الطلبات المغلقة',
-    hideClosedOrders: 'إخفاء الطلبات المغلقة',
-    restoreOrder: 'إرجاع الطلب',
-    restoreReady: 'إرجاع إلى تم التجهيز',
     refreshOrders: 'تحديث الطلبات',
     refreshing: 'جاري التحديث...',
     addWorker: 'إضافة عامل جديد',
@@ -156,10 +152,6 @@ const translations = {
     newOrders: 'New Orders',
     readyOrders: 'Ready',
     deliveredOrders: 'Delivered',
-    showClosedOrders: 'Show Closed Orders',
-    hideClosedOrders: 'Hide Closed Orders',
-    restoreOrder: 'Restore Order',
-    restoreReady: 'Restore to Ready',
     refreshOrders: 'Refresh Orders',
     refreshing: 'Refreshing...',
     addWorker: 'Add New User',
@@ -312,7 +304,6 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [orderTab, setOrderTab] = useState<OrderTab>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [showClosedOrders, setShowClosedOrders] = useState(false);
   const [clockTick, setClockTick] = useState(Date.now());
 
   const [authLoading, setAuthLoading] = useState(true);
@@ -342,6 +333,20 @@ export default function Home() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const mountedRef = useRef(true);
+const fetchingOrdersRef = useRef(false);
+const ordersChannelRef = useRef<any>(null);
+
+
+useEffect(() => {
+  return () => {
+    mountedRef.current = false;
+    if (ordersChannelRef.current) {
+      supabase.removeChannel(ordersChannelRef.current);
+      ordersChannelRef.current = null;
+    }
+  };
+}, []);
 
   useEffect(() => {
     const savedLang = getStoredLanguage();
@@ -386,11 +391,14 @@ export default function Home() {
   const t = translations[currentLang];
   const isArabic = currentLang === 'ar';
 
-  const statusLabels: Record<string, string> = {
+const statusLabels = useMemo<Record<string, string>>(
+  () => ({
     new: t.newStatus,
     ready: t.readyStatus,
     closed: t.closedStatus,
-  };
+  }),
+  [t.newStatus, t.readyStatus, t.closedStatus]
+);
 
   const statusStyles: Record<string, string> = {
     new: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -480,29 +488,37 @@ export default function Home() {
     }
   };
 
-  const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
-    if (!silent) setRefreshingOrders(true);
+const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
+  if (fetchingOrdersRef.current) return;
 
-    try {
-      const activeProfile = profileOverride ?? profile;
-      let query = supabase.from('orders').select('*').order('id', { ascending: false });
+  fetchingOrdersRef.current = true;
+  if (!silent) setRefreshingOrders(true);
 
-      if (activeProfile?.role === 'worker' && activeProfile?.branch) {
-        query = query.eq('branch', activeProfile.branch);
-      }
+  try {
+    const activeProfile = profileOverride ?? profile;
+    let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
-      const { data, error } = await query;
-
-      if (error) {
-        showMessage('error', t.updateStatusError);
-        return;
-      }
-
-      setOrders((data as Order[]) || []);
-    } finally {
-      if (!silent) setRefreshingOrders(false);
+    if (activeProfile?.role === 'worker' && activeProfile?.branch) {
+      query = query.eq('branch', activeProfile.branch);
     }
-  };
+
+    const { data, error } = await query;
+
+    if (error) {
+      showMessage('error', t.updateStatusError);
+      return;
+    }
+
+    if (mountedRef.current) {
+      setOrders((data as Order[]) || []);
+    }
+  } finally {
+    fetchingOrdersRef.current = false;
+    if (!silent && mountedRef.current) {
+      setRefreshingOrders(false);
+    }
+  }
+};
 
   const fetchWorkers = async (currentProfile?: Profile | null) => {
     const activeProfile = currentProfile ?? profile;
@@ -558,6 +574,10 @@ export default function Home() {
     setProfile(null);
     setOrders([]);
     setWorkers([]);
+    if (ordersChannelRef.current) {
+      supabase.removeChannel(ordersChannelRef.current);
+      ordersChannelRef.current = null;
+    }
     showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
   };
 
@@ -880,23 +900,47 @@ export default function Home() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!user || !profile) return;
+useEffect(() => {
+  if (!user?.id || !profile?.id) return;
 
-    fetchOrders(true, profile);
+  fetchOrders(true, profile);
 
-    const channel = supabase
-      .channel('orders-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        if (!autoRefresh) return;
-        fetchOrders(true, profile);
-      })
-      .subscribe();
+  if (ordersChannelRef.current) {
+    supabase.removeChannel(ordersChannelRef.current);
+    ordersChannelRef.current = null;
+  }
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, profile, autoRefresh]);
+  const channel = supabase
+    .channel(`orders-channel-${user.id}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+      if (!autoRefresh) return;
+      if (document.visibilityState !== 'visible') return;
+      await fetchOrders(true, profile);
+    })
+    .subscribe();
+
+  ordersChannelRef.current = channel;
+
+  return () => {
+    if (ordersChannelRef.current) {
+      supabase.removeChannel(ordersChannelRef.current);
+      ordersChannelRef.current = null;
+    }
+  };
+}, [user?.id, profile?.id, profile?.branch, profile?.role, autoRefresh]);
+
+useEffect(() => {
+  const handleVisibility = () => {
+    if (document.visibilityState === 'visible' && user && profile) {
+      fetchOrders(true, profile);
+    }
+  };
+
+  document.addEventListener('visibilitychange', handleVisibility);
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibility);
+  };
+}, [user?.id, profile?.id, profile?.branch, profile?.role]);
 
   useEffect(() => {
     if (profile?.role === 'admin') {
@@ -904,27 +948,20 @@ export default function Home() {
     }
   }, [profile]);
 
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const visibleOrders = useMemo(() => {
+    return orders
+      .filter((o) => o.status !== 'closed')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [orders]);
 
-  const visibleOrders = useMemo(() => {
-    if (profile?.role === 'admin' && showClosedOrders) {
-      return sortedOrders;
-    }
-
-    return sortedOrders.filter((o) => o.status !== 'closed');
-  }, [sortedOrders, profile?.role, showClosedOrders]);
-
   const counts = useMemo(() => {
-    const openOrders = sortedOrders.filter((o) => o.status !== 'closed');
     return {
-      total: openOrders.length,
-      new: openOrders.filter((o) => o.status === 'new').length,
-      ready: openOrders.filter((o) => o.status === 'ready').length,
-      closed: sortedOrders.filter((o) => o.status === 'closed').length,
+      total: visibleOrders.length,
+      new: visibleOrders.filter((o) => o.status === 'new').length,
+      ready: visibleOrders.filter((o) => o.status === 'ready').length,
+      closed: orders.filter((o) => o.status === 'closed').length,
     };
-  }, [sortedOrders]);
+  }, [orders, visibleOrders]);
 
   const filteredOrders = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1007,7 +1044,7 @@ export default function Home() {
             </div>
           )}
 
-          <div className="space-y-4">
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); login(); }}>
             <div>
               <label className="mb-2 block text-sm font-bold text-stone-700">{t.username}</label>
               <input
@@ -1031,13 +1068,13 @@ export default function Home() {
             </div>
 
             <button
-              onClick={login}
+              type="submit"
               disabled={loginLoading}
               className="w-full rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loginLoading ? t.loggingIn : t.loginButton}
             </button>
-          </div>
+          </form>
         </div>
       </main>
     );
@@ -1486,23 +1523,6 @@ export default function Home() {
                     </button>
                   </div>
                 )}
-
-
-                {profile.role === 'admin' && (
-                  <div className="flex justify-end">
-                    <button
-                      onClick={() => setShowClosedOrders((prev) => !prev)}
-                      className={cx(
-                        'rounded-2xl px-4 py-2 text-sm font-bold shadow-sm transition',
-                        showClosedOrders
-                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200'
-                          : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
-                      )}
-                    >
-                      {showClosedOrders ? t.hideClosedOrders : t.showClosedOrders}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1545,55 +1565,43 @@ export default function Home() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {o.status === 'closed' && profile.role === 'admin' ? (
+                  {o.status !== 'closed' && (
                     <button
                       onClick={() => updateStatus(o.id, 'ready')}
-                      disabled={busyId === o.id}
-                      className="col-span-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {busyId === o.id ? t.updating : t.restoreReady}
-                    </button>
-                  ) : (
-                    <>
-                      {o.status !== 'closed' && (
-                        <button
-                          onClick={() => updateStatus(o.id, 'ready')}
-                          disabled={busyId === o.id || o.status === 'ready'}
-                          className={cx(
-                            'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
-                            o.status === 'ready'
-                              ? 'cursor-not-allowed bg-stone-400'
-                              : 'bg-sky-600 hover:bg-sky-700'
-                          )}
-                        >
-                          {busyId === o.id && o.status !== 'ready'
-                            ? t.updating
-                            : o.status === 'ready'
-                            ? `${t.ready} ✔️`
-                            : t.ready}
-                        </button>
+                      disabled={busyId === o.id || o.status === 'ready'}
+                      className={cx(
+                        'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
+                        o.status === 'ready'
+                          ? 'cursor-not-allowed bg-stone-400'
+                          : 'bg-sky-600 hover:bg-sky-700'
                       )}
-
-                      <button
-                        onClick={() => updateStatus(o.id, 'closed')}
-                        disabled={busyId === o.id || o.status !== 'ready'}
-                        className={cx(
-                          'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
-                          o.status === 'closed'
-                            ? 'cursor-not-allowed bg-stone-400'
-                            : o.status !== 'ready'
-                            ? 'cursor-not-allowed bg-stone-300'
-                            : 'bg-emerald-600 hover:bg-emerald-700'
-                        )}
-                      >
-                        {busyId === o.id && o.status === 'ready'
-                          ? t.updating
-                          : o.status === 'closed'
-                          ? `${t.delivered} ✔️`
-                          : t.delivered}
-                      </button>
-                    </>
+                    >
+                      {busyId === o.id && o.status !== 'ready'
+                        ? t.updating
+                        : o.status === 'ready'
+                        ? `${t.ready} ✔️`
+                        : t.ready}
+                    </button>
                   )}
+
+                  <button
+                    onClick={() => updateStatus(o.id, 'closed')}
+                    disabled={busyId === o.id || o.status !== 'ready'}
+                    className={cx(
+                      'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
+                      o.status === 'closed'
+                        ? 'cursor-not-allowed bg-stone-400'
+                        : o.status !== 'ready'
+                        ? 'cursor-not-allowed bg-stone-300'
+                        : 'bg-emerald-600 hover:bg-emerald-700'
+                    )}
+                  >
+                    {busyId === o.id && o.status === 'ready'
+                      ? t.updating
+                      : o.status === 'closed'
+                      ? `${t.delivered} ✔️`
+                      : t.delivered}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1626,7 +1634,7 @@ export default function Home() {
 
               <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
                 {ordersToRender.map((o) => (
-                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40', o.status === 'closed' && 'bg-stone-100/70')}>
+                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40')}>
                     <td className="px-6 py-4 md:px-8">
                       <div className="font-extrabold text-stone-900">#{o.receipt_number}</div>
                       <div className="mt-1 text-xs font-bold text-stone-500">{formatOrderAge(o.created_at, currentLang)}</div>
@@ -1646,55 +1654,43 @@ export default function Home() {
                     </td>
                     <td className="px-6 py-4 md:px-8">
                       <div className="flex flex-wrap gap-2">
-                        {o.status === 'closed' && profile.role === 'admin' ? (
+                        {o.status !== 'closed' && (
                           <button
                             onClick={() => updateStatus(o.id, 'ready')}
-                            disabled={busyId === o.id}
-                            className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {busyId === o.id ? t.updating : t.restoreReady}
-                          </button>
-                        ) : (
-                          <>
-                            {o.status !== 'closed' && (
-                              <button
-                                onClick={() => updateStatus(o.id, 'ready')}
-                                disabled={busyId === o.id || o.status === 'ready'}
-                                className={cx(
-                                  'rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-sm transition',
-                                  o.status === 'ready'
-                                    ? 'cursor-not-allowed bg-stone-400'
-                                    : 'bg-sky-600 hover:bg-sky-700'
-                                )}
-                              >
-                                {busyId === o.id && o.status !== 'ready'
-                                  ? t.updating
-                                  : o.status === 'ready'
-                                  ? `${t.ready} ✔️`
-                                  : t.ready}
-                              </button>
+                            disabled={busyId === o.id || o.status === 'ready'}
+                            className={cx(
+                              'rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-sm transition',
+                              o.status === 'ready'
+                                ? 'cursor-not-allowed bg-stone-400'
+                                : 'bg-sky-600 hover:bg-sky-700'
                             )}
-
-                            <button
-                              onClick={() => updateStatus(o.id, 'closed')}
-                              disabled={busyId === o.id || o.status !== 'ready'}
-                              className={cx(
-                                'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
-                                o.status === 'closed'
-                                  ? 'cursor-not-allowed bg-stone-400'
-                                  : o.status !== 'ready'
-                                  ? 'cursor-not-allowed bg-stone-300'
-                                  : 'bg-emerald-600 hover:bg-emerald-700'
-                              )}
-                            >
-                              {busyId === o.id && o.status === 'ready'
-                                ? t.updating
-                                : o.status === 'closed'
-                                ? `${t.delivered} ✔️`
-                                : t.delivered}
-                            </button>
-                          </>
+                          >
+                            {busyId === o.id && o.status !== 'ready'
+                              ? t.updating
+                              : o.status === 'ready'
+                              ? `${t.ready} ✔️`
+                              : t.ready}
+                          </button>
                         )}
+
+                        <button
+                          onClick={() => updateStatus(o.id, 'closed')}
+                          disabled={busyId === o.id || o.status !== 'ready'}
+                          className={cx(
+                            'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
+                            o.status === 'closed'
+                              ? 'cursor-not-allowed bg-stone-400'
+                              : o.status !== 'ready'
+                              ? 'cursor-not-allowed bg-stone-300'
+                              : 'bg-emerald-600 hover:bg-emerald-700'
+                          )}
+                        >
+                          {busyId === o.id && o.status === 'ready'
+                            ? t.updating
+                            : o.status === 'closed'
+                            ? `${t.delivered} ✔️`
+                            : t.delivered}
+                        </button>
                       </div>
                     </td>
                   </tr>
