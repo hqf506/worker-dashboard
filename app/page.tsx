@@ -238,12 +238,26 @@ const usernameToEmail = (username: string) => {
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const UI_LANGUAGE_STORAGE_KEY = 'worker-dashboard-ui-language';
+
+const getStoredLanguage = (): Language => {
+  if (typeof window === 'undefined') return 'ar';
+  const savedLang = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY);
+  return savedLang === 'en' || savedLang === 'ar' ? savedLang : 'ar';
+};
+
+const applyDocumentLanguage = (lang: Language) => {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+};
+
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
 export default function Home() {
-  const [uiLanguage, setUiLanguage] = useState<Language>('ar');
+  const [uiLanguage, setUiLanguage] = useState<Language>(() => getStoredLanguage());
 
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -281,18 +295,33 @@ export default function Home() {
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const savedLang = localStorage.getItem('worker-dashboard-ui-language');
-    if (savedLang === 'ar' || savedLang === 'en') {
-      setUiLanguage(savedLang);
-    }
+    const savedLang = getStoredLanguage();
+    setUiLanguage(savedLang);
+    applyDocumentLanguage(savedLang);
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('worker-dashboard-ui-language', uiLanguage);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage);
+    }
+    applyDocumentLanguage(uiLanguage);
   }, [uiLanguage]);
 
-  const currentLang: Language =
-    profile?.language === 'en' ? 'en' : profile?.language === 'ar' ? 'ar' : uiLanguage;
+  useEffect(() => {
+    if (!profile?.id) return;
+
+    const storedLang = getStoredLanguage();
+
+    if (profile.language !== 'ar' && profile.language !== 'en') {
+      return;
+    }
+
+    if (storedLang !== profile.language) {
+      setUiLanguage(storedLang);
+    }
+  }, [profile?.id, profile?.language]);
+
+  const currentLang: Language = uiLanguage;
 
   const t = translations[currentLang];
   const isArabic = currentLang === 'ar';
@@ -320,6 +349,11 @@ export default function Home() {
       setMessage(null);
     }, 3500);
   };
+
+  const setAppLanguage = (lang: Language) => {
+    setUiLanguage(lang);
+  };
+
 
   const hydrateWorkerMaps = (list: Profile[]) => {
     const nextRoleMap: Record<string, Role> = {};
@@ -859,7 +893,7 @@ export default function Home() {
             <div className="text-sm font-bold text-stone-500">{t.languageOutside}</div>
             <select
               value={uiLanguage}
-              onChange={(e) => setUiLanguage(e.target.value as Language)}
+              onChange={(e) => setAppLanguage(e.target.value as Language)}
               className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
             >
               <option value="ar">العربية</option>
@@ -1182,7 +1216,7 @@ export default function Home() {
             </div>
 
             <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-full text-right">
+              <table className={cx("min-w-full", isArabic ? "text-right" : "text-left")}>
                 <thead className="bg-stone-50/90 text-sm text-stone-600">
                   <tr>
                     <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
@@ -1415,7 +1449,7 @@ export default function Home() {
           </div>
 
           <div className="hidden overflow-x-auto md:block">
-            <table className="min-w-full text-right">
+            <table className={cx("min-w-full", isArabic ? "text-right" : "text-left")}>
               <thead className="bg-stone-50/90 text-sm text-stone-600">
                 <tr>
                   <th className="px-6 py-4 font-bold md:px-8">{t.invoice}</th>
