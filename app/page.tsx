@@ -114,7 +114,7 @@ const translations = {
     safaBranch: 'فرع الصحافة',
     rawdaBranch: 'فرع الروضة',
     allBranches: 'كل الفروع',
-    arabic: 'عربي',
+    arabic: 'العربية',
     english: 'English',
     newStatus: 'جديد',
     readyStatus: 'تم التجهيز',
@@ -128,6 +128,7 @@ const translations = {
     deleteUserAction: 'حذف اليوزر',
     selectActionFirst: 'اختر الإجراء أولاً',
     email: 'الإيميل',
+    languageOutside: 'اللغة',
   },
   en: {
     loading: 'Loading...',
@@ -209,7 +210,7 @@ const translations = {
     safaBranch: 'Sahafa Branch',
     rawdaBranch: 'Rawda Branch',
     allBranches: 'All Branches',
-    arabic: 'Arabic',
+    arabic: 'العربية',
     english: 'English',
     newStatus: 'New',
     readyStatus: 'Ready',
@@ -223,6 +224,7 @@ const translations = {
     deleteUserAction: 'Delete User',
     selectActionFirst: 'Select an action first',
     email: 'Email',
+    languageOutside: 'Language',
   },
 } as const;
 
@@ -241,6 +243,8 @@ function cx(...classes: Array<string | false | undefined>) {
 }
 
 export default function Home() {
+  const [uiLanguage, setUiLanguage] = useState<Language>('ar');
+
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -276,7 +280,20 @@ export default function Home() {
 
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentLang: Language = profile?.language === 'en' ? 'en' : 'ar';
+  useEffect(() => {
+    const savedLang = localStorage.getItem('worker-dashboard-ui-language');
+    if (savedLang === 'ar' || savedLang === 'en') {
+      setUiLanguage(savedLang);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('worker-dashboard-ui-language', uiLanguage);
+  }, [uiLanguage]);
+
+  const currentLang: Language =
+    profile?.language === 'en' ? 'en' : profile?.language === 'ar' ? 'ar' : uiLanguage;
+
   const t = translations[currentLang];
   const isArabic = currentLang === 'ar';
 
@@ -838,6 +855,18 @@ export default function Home() {
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4 py-8 text-stone-800"
       >
         <div className="w-full max-w-md rounded-[32px] border border-white/60 bg-white/90 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:p-6 md:p-8">
+          <div className="mb-4 flex items-center justify-between">
+            <div className="text-sm font-bold text-stone-500">{t.languageOutside}</div>
+            <select
+              value={uiLanguage}
+              onChange={(e) => setUiLanguage(e.target.value as Language)}
+              className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+            >
+              <option value="ar">العربية</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+
           <div className="mb-6 text-center">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] border border-stone-200 bg-white shadow-sm">
               <img src="/logo-sahafa.png" alt="logo" className="h-14 w-14 object-contain" />

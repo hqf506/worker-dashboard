@@ -54,8 +54,6 @@ export async function POST(req: NextRequest) {
       .eq('id', adminUserId)
       .maybeSingle();
 
-    console.log('ADMIN CHECK:', adminUserId, adminProfile, adminError);
-
     if (adminError) {
       return NextResponse.json(
         { error: adminError.message || 'تعذر التحقق من الأدمن' },
@@ -67,22 +65,42 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
     }
 
-    const { data: existingProfile, error: existingProfileError } = await adminClient
+    const { data: existingByUsername, error: usernameCheckError } = await adminClient
       .from('profiles')
       .select('id')
-      .or(`username.eq.${cleanUsername},email.eq.${cleanEmail}`)
+      .eq('username', cleanUsername)
       .maybeSingle();
 
-    if (existingProfileError) {
+    if (usernameCheckError) {
       return NextResponse.json(
-        { error: existingProfileError.message || 'تعذر التحقق من المستخدم الحالي' },
+        { error: usernameCheckError.message || 'تعذر التحقق من اسم المستخدم' },
         { status: 500 }
       );
     }
 
-    if (existingProfile) {
+    if (existingByUsername) {
       return NextResponse.json(
-        { error: 'اسم المستخدم أو الإيميل مستخدم بالفعل' },
+        { error: 'اسم المستخدم مستخدم بالفعل' },
+        { status: 400 }
+      );
+    }
+
+    const { data: existingByEmail, error: emailCheckError } = await adminClient
+      .from('profiles')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
+
+    if (emailCheckError) {
+      return NextResponse.json(
+        { error: emailCheckError.message || 'تعذر التحقق من الإيميل' },
+        { status: 500 }
+      );
+    }
+
+    if (existingByEmail) {
+      return NextResponse.json(
+        { error: 'الإيميل مستخدم بالفعل' },
         { status: 400 }
       );
     }
@@ -96,8 +114,6 @@ export async function POST(req: NextRequest) {
         username: cleanUsername,
       },
     });
-
-    console.log('CREATE USER:', createdUser?.user?.id, createUserError);
 
     if (createUserError || !createdUser?.user?.id) {
       return NextResponse.json(
@@ -118,8 +134,6 @@ export async function POST(req: NextRequest) {
       branch: cleanBranch || null,
     });
 
-    console.log('INSERT PROFILE:', newUserId, insertProfileError);
-
     if (insertProfileError) {
       await adminClient.auth.admin.deleteUser(newUserId);
 
@@ -135,8 +149,6 @@ export async function POST(req: NextRequest) {
       userId: newUserId,
     });
   } catch (error: any) {
-    console.error('CREATE WORKER FATAL:', error);
-
     return NextResponse.json(
       { error: error?.message || 'حدث خطأ غير متوقع' },
       { status: 500 }
