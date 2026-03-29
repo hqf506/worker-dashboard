@@ -136,6 +136,7 @@ const translations = {
     selectActionFirst: 'اختر الإجراء أولاً',
     email: 'الإيميل',
     languageOutside: 'اللغة',
+    actionExecuted: 'تم تنفيذ الإجراء بنجاح',
   },
   en: {
     loading: 'Loading...',
@@ -237,6 +238,7 @@ const translations = {
     selectActionFirst: 'Select an action first',
     email: 'Email',
     languageOutside: 'Language',
+    actionExecuted: 'Action completed successfully',
   },
 } as const;
 
@@ -455,6 +457,10 @@ export default function Home() {
     }, 3500);
   };
 
+  const showActionSuccess = (text?: string) => {
+    showMessage('success', text || t.actionExecuted);
+  };
+
   const setAppLanguage = (lang: Language) => {
     setUiLanguage(lang);
   };
@@ -651,7 +657,7 @@ export default function Home() {
         return;
       }
 
-      showMessage('success', t.updateStatusSuccess);
+      showActionSuccess(t.updateStatusSuccess);
       await fetchOrders(true);
     } finally {
       setBusyId(null);
@@ -706,7 +712,7 @@ export default function Home() {
       setWorkerName('');
       setWorkerUsername('');
       setWorkerPassword('');
-      showMessage('success', t.workerCreated);
+      showActionSuccess(t.workerCreated);
       await fetchWorkers(profile);
     } catch {
       showMessage('error', t.workerCreateError);
@@ -754,7 +760,7 @@ export default function Home() {
       }
 
       setResetPasswordMap((prev) => ({ ...prev, [worker.id]: '' }));
-      showMessage('success', t.resetPasswordSuccess);
+      showActionSuccess(t.resetPasswordSuccess);
     } catch {
       showMessage('error', t.resetPasswordError);
     } finally {
@@ -793,7 +799,7 @@ export default function Home() {
         return;
       }
 
-      showMessage('success', t.branchLangSaved);
+      showActionSuccess(t.branchLangSaved);
       await fetchWorkers(profile);
     } catch (error) {
       console.error('SAVE WORKER SETTINGS ERROR:', error);
@@ -830,7 +836,7 @@ export default function Home() {
         return;
       }
 
-      showMessage('success', t.roleSaved);
+      showActionSuccess(t.roleSaved);
       await fetchWorkers(profile);
     } catch {
       showMessage('error', t.roleSaveError);
@@ -865,7 +871,7 @@ export default function Home() {
         return;
       }
 
-      showMessage('success', t.userDeleted);
+      showActionSuccess(t.userDeleted);
       await fetchWorkers(profile);
     } catch {
       showMessage('error', t.userDeleteError);
@@ -1201,19 +1207,33 @@ export default function Home() {
       dir={isArabic ? 'rtl' : 'ltr'}
       className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-3 py-4 text-stone-800 sm:px-4 sm:py-6 md:px-6 lg:px-8"
     >
-      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
-        {message && (
+      {message && (
+        <div className="fixed left-1/2 top-4 z-[100] w-[calc(100%-24px)] max-w-xl -translate-x-1/2">
           <div
             className={cx(
-              'rounded-[24px] px-4 py-3 text-sm font-bold shadow-sm sm:px-5 sm:py-4',
+              'rounded-2xl px-4 py-3 text-sm font-extrabold shadow-[0_12px_35px_rgba(0,0,0,0.16)] backdrop-blur sm:px-5',
               message.type === 'success'
-                ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
-                : 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                ? 'bg-emerald-500 text-white ring-1 ring-emerald-400'
+                : 'bg-rose-500 text-white ring-1 ring-rose-400'
             )}
           >
-            {message.text}
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">{message.type === 'success' ? '✅' : '⚠️'}</span>
+                <span>{message.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMessage(null)}
+                className="rounded-full bg-white/15 px-2 py-1 text-xs font-bold text-white transition hover:bg-white/25"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
+      <div className="mx-auto max-w-7xl space-y-4 sm:space-y-6">
 
         <section className="relative overflow-hidden rounded-[28px] border border-white/60 bg-white/80 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="absolute inset-0 bg-gradient-to-l from-stone-100/40 via-transparent to-white/20" />
