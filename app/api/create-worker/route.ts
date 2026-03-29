@@ -1,109 +1,144 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const supabaseAnon = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { full_name, username, password, adminUserId } = body;
 
-    if (!full_name || !username || !password || !adminUserId) {
-      return NextResponse.json({ error: 'البيانات ناقصة' }, { status: 400 });
+    const {
+      full_name,
+      username,
+      email,
+      password,
+      adminUserId,
+      role = 'worker',
+      language = 'ar',
+      branch = '',
+    } = body;
+
+    if (!full_name || !username || !email || !password || !adminUserId) {
+      return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    if (password.length < 6) {
+    const cleanName = String(full_name).trim();
+    const cleanUsername = String(username).trim().toLowerCase();
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanPassword = String(password).trim();
+    const cleanRole = String(role).trim().toLowerCase();
+    const cleanLanguage = String(language).trim().toLowerCase();
+    const cleanBranch = String(branch || '').trim();
+
+    if (cleanPassword.length < 6) {
       return NextResponse.json(
         { error: 'كلمة المرور لازم تكون 6 أحرف أو أكثر' },
         { status: 400 }
       );
     }
 
-    const cleanUsername = String(username).trim().toLowerCase();
-
-   const { data: adminProfile, error: adminError } = await supabaseAdmin
-  .from('profiles')
-  .select('id, role')
-  .eq('id', adminUserId)
-  .single();
-
-      console.log('ADMIN CHECK:', adminUserId, adminProfile, adminError);
-
-    if (adminError || !adminProfile || adminProfile.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'غير مصرح لك بإضافة عمال' },
-        { status: 403 }
-      );
+    if (!['worker', 'admin'].includes(cleanRole)) {
+      return NextResponse.json({ error: 'صلاحية غير صحيحة' }, { status: 400 });
     }
 
-    const { data: existingUsername } = await supabaseAnon
+    if (!['ar', 'en'].includes(cleanLanguage)) {
+      return NextResponse.json({ error: 'لغة غير صحيحة' }, { status: 400 });
+    }
+
+    const { data: adminProfile, error: adminError } = await adminClient
       .from('profiles')
-      .select('id')
-      .eq('username', cleanUsername)
+      .select('id, role')
+      .eq('id', adminUserId)
       .maybeSingle();
 
-    if (existingUsername) {
+    console.log('ADMIN CHECK:', adminUserId, adminProfile, adminError);
+
+    if (adminError) {
       return NextResponse.json(
-        { error: 'اسم المستخدم مستخدم من قبل' },
-        { status: 409 }
+        { error: adminError.message || 'تعذر التحقق من الأدمن' },
+        { status: 500 }
       );
     }
 
-    const fakeEmail = `${cleanUsername}@worker.local`;
-
-    const { data: createdUser, error: createError } =
-      await supabaseAdmin.auth.admin.createUser({
-        email: fakeEmail,
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name,
-          username: cleanUsername,
-          role: 'worker',
-        },
-      });
-
-    if (createError || !createdUser.user) {
-      return NextResponse.json(
-        { error: createError?.message || 'فشل إنشاء المستخدم' },
-        { status: 400 }
-      );
+    if (!adminProfile || adminProfile.role !== 'admin') {
+      return NextResponse.json({ error: 'غير مصرح لك' }, { status: 403 });
     }
 
-    const { error: profileError } = await supabaseAdmin
+    const { data: existingProfile, error: existingProfileError } = await adminClient
       .from('profiles')
-      .insert({
-        id: createdUser.user.id,
-        email: fakeEmail,
-        full_name,
-        username: cleanUsername,
-        role: 'worker',
-      });
+      .select('id')
+      .or(`username.eq.${cleanUsername},email.eq.${cleanEmail}`)
+      .maybeSingle();
 
-    if (profileError) {
-      await supabaseAdmin.auth.admin.deleteUser(createdUser.user.id);
+    if (existingProfileError) {
+      return NextResponse.json(
+        { error: existingProfileError.message || 'تعذر التحقق من المستخدم الحالي' },
+        { status: 500 }
+      );
+    }
+
+    if (existingProfile) {
+      return NextResponse.json(
+        { error: 'اسم المستخدم أو الإيميل مستخدم بالفعل' },
+        { status: 400 }
+      );
+    }
+
+    const { data: createdUser, error: createUserError } = await adminClient.auth.admin.createUser({
+      email: cleanEmail,
+      password: cleanPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: cleanName,
+        username: cleanUsername,
+      },
+    });
+
+    console.log('CREATE USER:', createdUser?.user?.id, createUserError);
+
+    if (createUserError || !createdUser?.user?.id) {
+      return NextResponse.json(
+        { error: createUserError?.message || 'فشل إنشاء مستخدم Auth' },
+        { status: 500 }
+      );
+    }
+
+    const newUserId = createdUser.user.id;
+
+    const { error: insertProfileError } = await adminClient.from('profiles').insert({
+      id: newUserId,
+      email: cleanEmail,
+      username: cleanUsername,
+      full_name: cleanName,
+      role: cleanRole,
+      language: cleanLanguage,
+      branch: cleanBranch || null,
+    });
+
+    console.log('INSERT PROFILE:', newUserId, insertProfileError);
+
+    if (insertProfileError) {
+      await adminClient.auth.admin.deleteUser(newUserId);
 
       return NextResponse.json(
-        { error: profileError.message || 'فشل حفظ بيانات العامل' },
-        { status: 400 }
+        { error: insertProfileError.message || 'فشل حفظ بيانات المستخدم في profiles' },
+        { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      message: 'تم إنشاء العامل بنجاح',
+      message: 'تم إنشاء المستخدم بنجاح',
+      userId: newUserId,
     });
-  } catch {
+  } catch (error: any) {
+    console.error('CREATE WORKER FATAL:', error);
+
     return NextResponse.json(
-      { error: 'حدث خطأ غير متوقع' },
+      { error: error?.message || 'حدث خطأ غير متوقع' },
       { status: 500 }
     );
   }

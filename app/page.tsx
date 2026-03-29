@@ -18,26 +18,192 @@ type Order = {
   created_at: string;
 };
 
+type Role = 'admin' | 'worker';
+type Language = 'ar' | 'en';
+
 type Profile = {
   id: string;
   email: string;
   username?: string | null;
   full_name: string;
-  role: 'admin' | 'worker';
+  role: Role;
+  language?: Language | null;
+  branch?: string | null;
   created_at?: string;
 };
 
-const statusLabels: Record<string, string> = {
-  new: 'جديد',
-  ready: 'تم التجهيز',
-  closed: 'تم التسليم',
-};
-
-const statusStyles: Record<string, string> = {
-  new: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  ready: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
-  closed: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-};
+const translations = {
+  ar: {
+    loading: 'جاري التحميل...',
+    login: 'تسجيل الدخول',
+    panel: 'لوحة العامل والإدارة',
+    username: 'اسم المستخدم',
+    password: 'كلمة المرور',
+    enterCredentials: 'أدخل اسم المستخدم وكلمة المرور',
+    loginSuccess: 'تم تسجيل الدخول بنجاح',
+    loginError: 'فشل تسجيل الدخول',
+    loginButton: 'دخول',
+    loggingIn: 'جاري الدخول...',
+    logout: 'تسجيل خروج',
+    dashboardAdmin: 'لوحة الأدمن',
+    dashboardWorker: 'لوحة العامل',
+    titleAdmin: 'إدارة الطلبات والعمال',
+    titleWorker: 'لوحة العامل',
+    openOrders: 'الطلبات المفتوحة',
+    newOrders: 'طلبات جديدة',
+    readyOrders: 'تم التجهيز',
+    deliveredOrders: 'تم التسليم',
+    refreshOrders: 'تحديث الطلبات',
+    refreshing: 'جاري التحديث...',
+    addWorker: 'إضافة عامل جديد',
+    addWorkerDesc: 'من هنا تقدر تضيف يوزر جديد للعامل مع كلمة مرور.',
+    workerName: 'اسم العامل',
+    addWorkerBtn: 'إضافة العامل',
+    addingWorker: 'جاري الإضافة...',
+    currentWorkers: 'العمال الحاليون',
+    name: 'الاسم',
+    userName: 'اسم المستخدم',
+    role: 'الصلاحية',
+    language: 'اللغة',
+    branch: 'الفرع',
+    newPassword: 'كلمة مرور جديدة',
+    actions: 'الإجراء',
+    worker: 'عامل',
+    admin: 'أدمن',
+    resetPassword: 'إعادة تعيين كلمة المرور',
+    changingPassword: 'جاري التغيير...',
+    changeRole: 'تغيير الصلاحية',
+    changingRole: 'جاري التغيير...',
+    saveBranchLang: 'حفظ اللغة والفرع',
+    saving: 'جاري الحفظ...',
+    deleteUser: 'حذف اليوزر',
+    deleting: 'جاري الحذف...',
+    noWorkers: 'لا يوجد عمال حالياً',
+    currentOrders: 'الطلبات الحالية',
+    currentOrdersDesc: 'الطلبات المسلمة تختفي من صفحة العامل تلقائيًا.',
+    searchPlaceholder: 'ابحث برقم الفاتورة أو اسم العميل أو الجوال أو الفرع',
+    invoice: 'رقم الفاتورة',
+    customer: 'العميل',
+    phone: 'الجوال',
+    status: 'الحالة',
+    ready: 'تم التجهيز',
+    delivered: 'تم التسليم',
+    updating: 'جاري التحديث...',
+    noOrders: 'لا توجد طلبات حالياً',
+    noMatchingOrders: 'لا توجد نتائج مطابقة أو لا توجد طلبات مفتوحة',
+    noProfile: 'لم يتم العثور على بيانات المستخدم في profiles',
+    fillAllWorkerFields: 'عبّ جميع حقول العامل',
+    minPassword: 'كلمة المرور لازم تكون 6 أحرف أو أكثر',
+    updateStatusSuccess: 'تم تحديث حالة الطلب',
+    updateStatusError: 'تعذر تحديث حالة الطلب',
+    workerCreated: 'تم إنشاء العامل بنجاح',
+    workerCreateError: 'فشل إنشاء العامل',
+    resetPasswordEmpty: 'أدخل كلمة مرور جديدة للعامل',
+    resetPasswordSuccess: 'تم تغيير كلمة مرور العامل بنجاح',
+    resetPasswordError: 'فشل إعادة تعيين كلمة المرور',
+    roleSaved: 'تم تحديث الصلاحية بنجاح',
+    roleSaveError: 'تعذر تحديث الصلاحية',
+    branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
+    branchLangError: 'تعذر حفظ اللغة والفرع',
+    userDeleted: 'تم حذف المستخدم بنجاح',
+    userDeleteError: 'تعذر حذف المستخدم',
+    confirmDelete: 'هل أنت متأكد من حذف هذا المستخدم؟',
+    confirmRoleChange: 'هل أنت متأكد من تغيير الصلاحية؟',
+    safaBranch: 'فرع الصحافة',
+    rawdaBranch: 'فرع الروضة',
+    allBranches: 'كل الفروع',
+    arabic: 'عربي',
+    english: 'English',
+    newStatus: 'جديد',
+    readyStatus: 'تم التجهيز',
+    closedStatus: 'تم التسليم',
+  },
+  en: {
+    loading: 'Loading...',
+    login: 'Login',
+    panel: 'Worker & Admin Panel',
+    username: 'Username',
+    password: 'Password',
+    enterCredentials: 'Enter username and password',
+    loginSuccess: 'Logged in successfully',
+    loginError: 'Login failed',
+    loginButton: 'Login',
+    loggingIn: 'Signing in...',
+    logout: 'Logout',
+    dashboardAdmin: 'Admin Panel',
+    dashboardWorker: 'Worker Panel',
+    titleAdmin: 'Orders & Workers Management',
+    titleWorker: 'Worker Dashboard',
+    openOrders: 'Open Orders',
+    newOrders: 'New Orders',
+    readyOrders: 'Ready',
+    deliveredOrders: 'Delivered',
+    refreshOrders: 'Refresh Orders',
+    refreshing: 'Refreshing...',
+    addWorker: 'Add New User',
+    addWorkerDesc: 'Create a new worker user with password.',
+    workerName: 'Full Name',
+    addWorkerBtn: 'Add User',
+    addingWorker: 'Adding...',
+    currentWorkers: 'Current Users',
+    name: 'Name',
+    userName: 'Username',
+    role: 'Role',
+    language: 'Language',
+    branch: 'Branch',
+    newPassword: 'New Password',
+    actions: 'Actions',
+    worker: 'Worker',
+    admin: 'Admin',
+    resetPassword: 'Reset Password',
+    changingPassword: 'Changing...',
+    changeRole: 'Change Role',
+    changingRole: 'Changing...',
+    saveBranchLang: 'Save Branch & Language',
+    saving: 'Saving...',
+    deleteUser: 'Delete User',
+    deleting: 'Deleting...',
+    noWorkers: 'No workers found',
+    currentOrders: 'Current Orders',
+    currentOrdersDesc: 'Delivered orders are hidden automatically.',
+    searchPlaceholder: 'Search by invoice, customer, phone, or branch',
+    invoice: 'Invoice',
+    customer: 'Customer',
+    phone: 'Phone',
+    status: 'Status',
+    ready: 'Ready',
+    delivered: 'Delivered',
+    updating: 'Updating...',
+    noOrders: 'No orders available',
+    noMatchingOrders: 'No matching or open orders found',
+    noProfile: 'User profile was not found in profiles',
+    fillAllWorkerFields: 'Fill in all worker fields',
+    minPassword: 'Password must be at least 6 characters',
+    updateStatusSuccess: 'Order status updated successfully',
+    updateStatusError: 'Unable to update order status',
+    workerCreated: 'Worker created successfully',
+    workerCreateError: 'Failed to create worker',
+    resetPasswordEmpty: 'Enter a new password for the worker',
+    resetPasswordSuccess: 'Worker password updated successfully',
+    resetPasswordError: 'Failed to reset password',
+    roleSaved: 'Role updated successfully',
+    roleSaveError: 'Unable to update role',
+    branchLangSaved: 'Branch and language saved successfully',
+    branchLangError: 'Unable to save branch and language',
+    userDeleted: 'User deleted successfully',
+    userDeleteError: 'Unable to delete user',
+    confirmDelete: 'Are you sure you want to delete this user?',
+    confirmRoleChange: 'Are you sure you want to change the role?',
+    safaBranch: 'Sahafa Branch',
+    rawdaBranch: 'Rawda Branch',
+    allBranches: 'All Branches',
+    arabic: 'Arabic',
+    english: 'English',
+    newStatus: 'New',
+    readyStatus: 'Ready',
+    closedStatus: 'Delivered',
+  },
+} as const;
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
@@ -47,6 +213,8 @@ const usernameToEmail = (username: string) => {
 };
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
+
+const branchOptions = ['فرع الصحافة', 'فرع الروضة'];
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -61,6 +229,9 @@ export default function Home() {
   const [workerLoading, setWorkerLoading] = useState(false);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
   const [resettingWorkerId, setResettingWorkerId] = useState<string | null>(null);
+  const [savingWorkerId, setSavingWorkerId] = useState<string | null>(null);
+  const [changingRoleId, setChangingRoleId] = useState<string | null>(null);
+  const [deletingWorkerId, setDeletingWorkerId] = useState<string | null>(null);
 
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -70,10 +241,29 @@ export default function Home() {
   const [workerPassword, setWorkerPassword] = useState('');
 
   const [resetPasswordMap, setResetPasswordMap] = useState<Record<string, string>>({});
+  const [workerRoleMap, setWorkerRoleMap] = useState<Record<string, Role>>({});
+  const [workerLanguageMap, setWorkerLanguageMap] = useState<Record<string, Language>>({});
+  const [workerBranchMap, setWorkerBranchMap] = useState<Record<string, string>>({});
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const currentLang: Language = profile?.language === 'en' ? 'en' : 'ar';
+  const t = translations[currentLang];
+  const isArabic = currentLang === 'ar';
+
+  const statusLabels: Record<string, string> = {
+    new: t.newStatus,
+    ready: t.readyStatus,
+    closed: t.closedStatus,
+  };
+
+  const statusStyles: Record<string, string> = {
+    new: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+    ready: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
+    closed: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+  };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
@@ -87,6 +277,22 @@ export default function Home() {
     }, 3500);
   };
 
+  const hydrateWorkerMaps = (list: Profile[]) => {
+    const nextRoleMap: Record<string, Role> = {};
+    const nextLanguageMap: Record<string, Language> = {};
+    const nextBranchMap: Record<string, string> = {};
+
+    list.forEach((w) => {
+      nextRoleMap[w.id] = w.role;
+      nextLanguageMap[w.id] = w.language === 'en' ? 'en' : 'ar';
+      nextBranchMap[w.id] = w.branch || '';
+    });
+
+    setWorkerRoleMap(nextRoleMap);
+    setWorkerLanguageMap(nextLanguageMap);
+    setWorkerBranchMap(nextBranchMap);
+  };
+
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('profiles')
@@ -94,14 +300,7 @@ export default function Home() {
       .eq('id', userId)
       .maybeSingle();
 
-    console.log('PROFILE:', data, error);
-
-    if (error) {
-      setProfile(null);
-      return null;
-    }
-
-    if (!data) {
+    if (error || !data) {
       setProfile(null);
       return null;
     }
@@ -114,14 +313,16 @@ export default function Home() {
     if (!silent) setRefreshingOrders(true);
 
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('id', { ascending: false });
+      let query = supabase.from('orders').select('*').order('id', { ascending: false });
+
+      if (profile?.role === 'worker' && profile?.branch) {
+        query = query.eq('branch', profile.branch);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
-        console.error('ORDERS ERROR:', error);
-        showMessage('error', 'تعذر تحميل الطلبات');
+        showMessage('error', t.updateStatusError);
         return;
       }
 
@@ -138,21 +339,21 @@ export default function Home() {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('role', 'worker')
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('WORKERS ERROR:', error);
-      showMessage('error', 'تعذر تحميل قائمة العمال');
+      showMessage('error', 'تعذر تحميل قائمة المستخدمين');
       return;
     }
 
-    setWorkers((data as Profile[]) || []);
+    const list = (data as Profile[]) || [];
+    setWorkers(list.filter((x) => x.id !== activeProfile.id));
+    hydrateWorkerMaps(list.filter((x) => x.id !== activeProfile.id));
   };
 
   const login = async () => {
     if (!loginUsername.trim() || !loginPassword.trim()) {
-      showMessage('error', 'أدخل اسم المستخدم وكلمة المرور');
+      showMessage('error', t.enterCredentials);
       return;
     }
 
@@ -160,21 +361,19 @@ export default function Home() {
 
     try {
       const fakeEmail = usernameToEmail(loginUsername);
-
       const { error } = await supabase.auth.signInWithPassword({
         email: fakeEmail,
         password: loginPassword,
       });
 
       if (error) {
-        showMessage('error', error.message || 'فشل تسجيل الدخول');
+        showMessage('error', error.message || t.loginError);
         return;
       }
 
-      showMessage('success', 'تم تسجيل الدخول بنجاح');
-    } catch (err) {
-      console.error('LOGIN ERROR:', err);
-      showMessage('error', 'حدث خطأ أثناء تسجيل الدخول');
+      showMessage('success', t.loginSuccess);
+    } catch {
+      showMessage('error', t.loginError);
     } finally {
       setLoginLoading(false);
     }
@@ -186,7 +385,7 @@ export default function Home() {
     setProfile(null);
     setOrders([]);
     setWorkers([]);
-    showMessage('success', 'تم تسجيل الخروج');
+    showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
   };
 
   const updateStatus = async (id: number, status: string) => {
@@ -196,12 +395,11 @@ export default function Home() {
       const { error } = await supabase.from('orders').update({ status }).eq('id', id);
 
       if (error) {
-        console.error('UPDATE STATUS ERROR:', error);
-        showMessage('error', 'تعذر تحديث حالة الطلب');
+        showMessage('error', t.updateStatusError);
         return;
       }
 
-      showMessage('success', 'تم تحديث حالة الطلب');
+      showMessage('success', t.updateStatusSuccess);
       await fetchOrders(true);
     } finally {
       setBusyId(null);
@@ -216,12 +414,12 @@ export default function Home() {
     const cleanPassword = workerPassword.trim();
 
     if (!cleanName || !cleanUsername || !cleanPassword) {
-      showMessage('error', 'عبّ جميع حقول العامل');
+      showMessage('error', t.fillAllWorkerFields);
       return;
     }
 
     if (cleanPassword.length < 6) {
-      showMessage('error', 'كلمة المرور لازم تكون 6 أحرف أو أكثر');
+      showMessage('error', t.minPassword);
       return;
     }
 
@@ -237,6 +435,9 @@ export default function Home() {
           email: usernameToEmail(cleanUsername),
           password: cleanPassword,
           adminUserId: user.id,
+          role: 'worker',
+          language: 'ar',
+          branch: '',
         }),
       });
 
@@ -244,24 +445,20 @@ export default function Home() {
 
       try {
         result = await res.json();
-      } catch {
-        result = null;
-      }
+      } catch {}
 
       if (!res.ok) {
-        console.error('CREATE WORKER API ERROR:', result);
-        showMessage('error', result?.error || 'فشل إنشاء العامل');
+        showMessage('error', result?.error || t.workerCreateError);
         return;
       }
 
       setWorkerName('');
       setWorkerUsername('');
       setWorkerPassword('');
-      showMessage('success', 'تم إنشاء العامل بنجاح');
+      showMessage('success', t.workerCreated);
       await fetchWorkers(profile);
-    } catch (err) {
-      console.error('CREATE WORKER ERROR:', err);
-      showMessage('error', 'حدث خطأ أثناء إنشاء العامل');
+    } catch {
+      showMessage('error', t.workerCreateError);
     } finally {
       setWorkerLoading(false);
     }
@@ -273,12 +470,12 @@ export default function Home() {
     const newPassword = (resetPasswordMap[worker.id] || '').trim();
 
     if (!newPassword) {
-      showMessage('error', `أدخل كلمة مرور جديدة للعامل ${worker.full_name}`);
+      showMessage('error', `${t.resetPasswordEmpty} ${worker.full_name}`);
       return;
     }
 
     if (newPassword.length < 6) {
-      showMessage('error', 'كلمة المرور الجديدة لازم تكون 6 أحرف أو أكثر');
+      showMessage('error', t.minPassword);
       return;
     }
 
@@ -299,27 +496,129 @@ export default function Home() {
 
       try {
         result = await res.json();
-      } catch {
-        result = null;
-      }
+      } catch {}
 
       if (!res.ok) {
-        console.error('RESET PASSWORD API ERROR:', result);
-        showMessage('error', result?.error || 'فشل إعادة تعيين كلمة المرور');
+        showMessage('error', result?.error || t.resetPasswordError);
         return;
       }
 
-      setResetPasswordMap((prev) => ({
-        ...prev,
-        [worker.id]: '',
-      }));
-
-      showMessage('success', `تم تغيير كلمة مرور ${worker.full_name} بنجاح`);
-    } catch (err) {
-      console.error('RESET PASSWORD ERROR:', err);
-      showMessage('error', 'حدث خطأ أثناء إعادة تعيين كلمة المرور');
+      setResetPasswordMap((prev) => ({ ...prev, [worker.id]: '' }));
+      showMessage('success', t.resetPasswordSuccess);
+    } catch {
+      showMessage('error', t.resetPasswordError);
     } finally {
       setResettingWorkerId(null);
+    }
+  };
+
+  const saveWorkerSettings = async (worker: Profile) => {
+    if (profile?.role !== 'admin' || !user) return;
+
+    setSavingWorkerId(worker.id);
+
+    try {
+      const res = await fetch('/api/update-worker-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workerId: worker.id,
+          adminUserId: user.id,
+          language: workerLanguageMap[worker.id] || 'ar',
+          branch: workerBranchMap[worker.id] || '',
+        }),
+      });
+
+      let result: any = null;
+
+      try {
+        result = await res.json();
+      } catch {}
+
+      if (!res.ok) {
+        showMessage('error', result?.error || t.branchLangError);
+        return;
+      }
+
+      showMessage('success', t.branchLangSaved);
+      await fetchWorkers(profile);
+    } catch {
+      showMessage('error', t.branchLangError);
+    } finally {
+      setSavingWorkerId(null);
+    }
+  };
+
+  const changeWorkerRole = async (worker: Profile) => {
+    if (profile?.role !== 'admin' || !user) return;
+    if (!confirm(t.confirmRoleChange)) return;
+
+    setChangingRoleId(worker.id);
+
+    try {
+      const res = await fetch('/api/update-worker-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workerId: worker.id,
+          adminUserId: user.id,
+          role: workerRoleMap[worker.id] || 'worker',
+        }),
+      });
+
+      let result: any = null;
+
+      try {
+        result = await res.json();
+      } catch {}
+
+      if (!res.ok) {
+        showMessage('error', result?.error || t.roleSaveError);
+        return;
+      }
+
+      showMessage('success', t.roleSaved);
+      await fetchWorkers(profile);
+    } catch {
+      showMessage('error', t.roleSaveError);
+    } finally {
+      setChangingRoleId(null);
+    }
+  };
+
+  const deleteWorker = async (worker: Profile) => {
+    if (profile?.role !== 'admin' || !user) return;
+    if (!confirm(t.confirmDelete)) return;
+
+    setDeletingWorkerId(worker.id);
+
+    try {
+      const res = await fetch('/api/delete-worker', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workerId: worker.id,
+          adminUserId: user.id,
+        }),
+      });
+
+      let result: any = null;
+
+      try {
+        result = await res.json();
+      } catch {}
+
+      if (!res.ok) {
+        showMessage('error', result?.error || t.userDeleteError);
+        return;
+      }
+
+      showMessage('success', t.userDeleted);
+      await fetchWorkers(profile);
+    } catch {
+      showMessage('error', t.userDeleteError);
+    } finally {
+      setDeletingWorkerId(null);
     }
   };
 
@@ -343,8 +642,6 @@ export default function Home() {
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
         }
-      } catch (err) {
-        console.error('INIT ERROR:', err);
       } finally {
         setAuthLoading(false);
       }
@@ -374,9 +671,7 @@ export default function Home() {
     });
 
     return () => {
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current);
-      }
+      if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
       subscription.unsubscribe();
     };
   }, []);
@@ -431,16 +726,16 @@ export default function Home() {
       safeText(o.branch).toLowerCase().includes(q) ||
       safeText(statusLabels[o.status] || o.status).toLowerCase().includes(q)
     );
-  }, [visibleOrders, search]);
+  }, [visibleOrders, search, statusLabels]);
 
   if (authLoading) {
     return (
       <main
-        dir="rtl"
+        dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
         <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          جاري التحميل...
+          {t.loading}
         </div>
       </main>
     );
@@ -449,20 +744,16 @@ export default function Home() {
   if (!user) {
     return (
       <main
-        dir="rtl"
+        dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4 py-8 text-stone-800"
       >
         <div className="w-full max-w-md rounded-[32px] border border-white/60 bg-white/90 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur md:p-8">
           <div className="mb-6 text-center">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[24px] border border-stone-200 bg-white shadow-sm">
-              <img
-                src="/logo-sahafa.png"
-                alt="شعار الصحافة"
-                className="h-14 w-14 object-contain"
-              />
+              <img src="/logo-sahafa.png" alt="logo" className="h-14 w-14 object-contain" />
             </div>
-            <h1 className="text-3xl font-extrabold text-stone-900">تسجيل الدخول</h1>
-            <p className="mt-2 text-sm text-stone-500">لوحة العامل والإدارة</p>
+            <h1 className="text-3xl font-extrabold text-stone-900">{t.login}</h1>
+            <p className="mt-2 text-sm text-stone-500">{t.panel}</p>
           </div>
 
           {message && (
@@ -479,22 +770,18 @@ export default function Home() {
 
           <div className="space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-bold text-stone-700">
-                اسم المستخدم
-              </label>
+              <label className="mb-2 block text-sm font-bold text-stone-700">{t.username}</label>
               <input
                 type="text"
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
-                placeholder="اسم المستخدم"
+                placeholder={t.username}
                 className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-bold text-stone-700">
-                كلمة المرور
-              </label>
+              <label className="mb-2 block text-sm font-bold text-stone-700">{t.password}</label>
               <input
                 type="password"
                 value={loginPassword}
@@ -509,7 +796,7 @@ export default function Home() {
               disabled={loginLoading}
               className="w-full rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {loginLoading ? 'جاري الدخول...' : 'دخول'}
+              {loginLoading ? t.loggingIn : t.loginButton}
             </button>
           </div>
         </div>
@@ -520,19 +807,17 @@ export default function Home() {
   if (!profile) {
     return (
       <main
-        dir="rtl"
+        dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
         <div className="rounded-[28px] border border-rose-200 bg-white/90 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          <div className="text-lg font-extrabold text-rose-700">
-            لم يتم العثور على بيانات المستخدم في profiles
-          </div>
+          <div className="text-lg font-extrabold text-rose-700">{t.noProfile}</div>
           <p className="mt-2 text-sm text-stone-500">{user.email}</p>
           <button
             onClick={logout}
             className="mt-5 rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
           >
-            تسجيل خروج
+            {t.logout}
           </button>
         </div>
       </main>
@@ -541,7 +826,7 @@ export default function Home() {
 
   return (
     <main
-      dir="rtl"
+      dir={isArabic ? 'rtl' : 'ltr'}
       className="min-h-screen bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4 py-6 text-stone-800 md:px-8"
     >
       <div className="mx-auto max-w-7xl space-y-6">
@@ -562,32 +847,26 @@ export default function Home() {
           <div className="relative flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between md:p-8">
             <div className="flex items-center gap-4">
               <div className="flex h-20 w-20 items-center justify-center rounded-[24px] border border-stone-200 bg-white shadow-sm">
-                <img
-                  src="/logo-sahafa.png"
-                  alt="شعار الصحافة"
-                  className="h-14 w-14 object-contain"
-                />
+                <img src="/logo-sahafa.png" alt="logo" className="h-14 w-14 object-contain" />
               </div>
 
               <div>
                 <div className="mb-2 inline-flex rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white shadow-sm">
-                  {profile.role === 'admin' ? 'لوحة الأدمن' : 'لوحة العامل'}
+                  {profile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
                 </div>
                 <h1 className="text-3xl font-extrabold tracking-tight text-stone-900 md:text-4xl">
-                  {profile.role === 'admin' ? 'إدارة الطلبات والعمال' : 'لوحة العامل'}
+                  {profile.role === 'admin' ? t.titleAdmin : t.titleWorker}
                 </h1>
-                <p className="mt-1 text-sm text-stone-500 md:text-base">
-                  {profile.full_name || user.email}
-                </p>
+                <p className="mt-1 text-sm text-stone-500 md:text-base">{profile.full_name || user.email}</p>
               </div>
             </div>
 
             <div className="flex flex-col items-stretch gap-3 md:items-end">
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <StatCard label="الطلبات المفتوحة" value={counts.total} />
-                <StatCard label="طلبات جديدة" value={counts.new} />
-                <StatCard label="تم التجهيز" value={counts.ready} />
-                <StatCard label="تم التسليم" value={counts.closed} />
+                <StatCard label={t.openOrders} value={counts.total} />
+                <StatCard label={t.newOrders} value={counts.new} />
+                <StatCard label={t.readyOrders} value={counts.ready} />
+                <StatCard label={t.deliveredOrders} value={counts.closed} />
               </div>
 
               <div className="flex gap-3">
@@ -596,14 +875,14 @@ export default function Home() {
                   disabled={refreshingOrders}
                   className="rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-stone-900 ring-1 ring-stone-200 shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {refreshingOrders ? 'جاري التحديث...' : 'تحديث الطلبات'}
+                  {refreshingOrders ? t.refreshing : t.refreshOrders}
                 </button>
 
                 <button
                   onClick={logout}
                   className="rounded-2xl bg-rose-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600"
                 >
-                  تسجيل خروج
+                  {t.logout}
                 </button>
               </div>
             </div>
@@ -613,10 +892,8 @@ export default function Home() {
         {profile.role === 'admin' && (
           <section className="overflow-hidden rounded-[32px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur">
             <div className="border-b border-stone-100 px-6 py-5 md:px-8">
-              <h2 className="text-xl font-extrabold text-stone-900">إضافة عامل جديد</h2>
-              <p className="mt-1 text-sm text-stone-500">
-                من هنا تقدر تضيف يوزر جديد للعامل مع كلمة مرور.
-              </p>
+              <h2 className="text-xl font-extrabold text-stone-900">{t.addWorker}</h2>
+              <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
             </div>
 
             <div className="grid gap-4 px-6 py-6 md:grid-cols-4 md:px-8">
@@ -624,7 +901,7 @@ export default function Home() {
                 type="text"
                 value={workerName}
                 onChange={(e) => setWorkerName(e.target.value)}
-                placeholder="اسم العامل"
+                placeholder={t.workerName}
                 className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
 
@@ -632,7 +909,7 @@ export default function Home() {
                 type="text"
                 value={workerUsername}
                 onChange={(e) => setWorkerUsername(e.target.value)}
-                placeholder="اسم المستخدم"
+                placeholder={t.username}
                 className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
 
@@ -640,7 +917,7 @@ export default function Home() {
                 type="password"
                 value={workerPassword}
                 onChange={(e) => setWorkerPassword(e.target.value)}
-                placeholder="كلمة المرور"
+                placeholder={t.password}
                 className="rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
               />
 
@@ -649,35 +926,85 @@ export default function Home() {
                 disabled={workerLoading}
                 className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {workerLoading ? 'جاري الإضافة...' : 'إضافة العامل'}
+                {workerLoading ? t.addingWorker : t.addWorkerBtn}
               </button>
             </div>
 
             <div className="border-t border-stone-100 px-6 py-5 md:px-8">
-              <h3 className="text-lg font-extrabold text-stone-900">العمال الحاليون</h3>
+              <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
             </div>
 
             <div className="overflow-x-auto">
               <table className="min-w-full text-right">
                 <thead className="bg-stone-50/90 text-sm text-stone-600">
                   <tr>
-                    <th className="px-6 py-4 font-bold md:px-8">الاسم</th>
-                    <th className="px-6 py-4 font-bold">اسم المستخدم</th>
-                    <th className="px-6 py-4 font-bold">الصلاحية</th>
-                    <th className="px-6 py-4 font-bold">كلمة مرور جديدة</th>
-                    <th className="px-6 py-4 font-bold md:px-8">الإجراء</th>
+                    <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
+                    <th className="px-6 py-4 font-bold">{t.userName}</th>
+                    <th className="px-6 py-4 font-bold">{t.role}</th>
+                    <th className="px-6 py-4 font-bold">{t.language}</th>
+                    <th className="px-6 py-4 font-bold">{t.branch}</th>
+                    <th className="px-6 py-4 font-bold">{t.newPassword}</th>
+                    <th className="px-6 py-4 font-bold md:px-8">{t.actions}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
                   {workers.map((w) => (
                     <tr key={w.id} className="transition hover:bg-stone-50/70">
                       <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
-                      <td className="px-6 py-4 text-stone-600">{w.username || w.email}</td>
-                      <td className="px-6 py-4">
-                        <span className="inline-flex rounded-full bg-stone-900 px-3 py-1 text-xs font-bold text-white">
-                          عامل
-                        </span>
+                      <td className="px-6 py-4 text-stone-600">
+                        <div>{w.username || w.email}</div>
+                        <div className="text-xs text-stone-400">{w.email}</div>
                       </td>
+
+                      <td className="px-6 py-4">
+                        <select
+                          value={workerRoleMap[w.id] || w.role}
+                          onChange={(e) =>
+                            setWorkerRoleMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value as Role,
+                            }))
+                          }
+                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
+                        >
+                          <option value="worker">{t.worker}</option>
+                          <option value="admin">{t.admin}</option>
+                        </select>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <select
+                          value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
+                          onChange={(e) =>
+                            setWorkerLanguageMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value as Language,
+                            }))
+                          }
+                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
+                        >
+                          <option value="ar">{t.arabic}</option>
+                          <option value="en">{t.english}</option>
+                        </select>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <select
+                          value={workerBranchMap[w.id] ?? w.branch ?? ''}
+                          onChange={(e) =>
+                            setWorkerBranchMap((prev) => ({
+                              ...prev,
+                              [w.id]: e.target.value,
+                            }))
+                          }
+                          className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[170px]"
+                        >
+                          <option value="">{t.allBranches}</option>
+                          <option value="فرع الصحافة">{t.safaBranch}</option>
+                          <option value="فرع الروضة">{t.rawdaBranch}</option>
+                        </select>
+                      </td>
+
                       <td className="px-6 py-4">
                         <input
                           type="password"
@@ -688,18 +1015,45 @@ export default function Home() {
                               [w.id]: e.target.value,
                             }))
                           }
-                          placeholder="كلمة مرور جديدة"
+                          placeholder={t.newPassword}
                           className="min-w-[180px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                         />
                       </td>
+
                       <td className="px-6 py-4 md:px-8">
-                        <button
-                          onClick={() => resetWorkerPassword(w)}
-                          disabled={resettingWorkerId === w.id}
-                          className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {resettingWorkerId === w.id ? 'جاري التغيير...' : 'إعادة تعيين كلمة المرور'}
-                        </button>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => resetWorkerPassword(w)}
+                            disabled={resettingWorkerId === w.id}
+                            className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {resettingWorkerId === w.id ? t.changingPassword : t.resetPassword}
+                          </button>
+
+                          <button
+                            onClick={() => changeWorkerRole(w)}
+                            disabled={changingRoleId === w.id}
+                            className="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {changingRoleId === w.id ? t.changingRole : t.changeRole}
+                          </button>
+
+                          <button
+                            onClick={() => saveWorkerSettings(w)}
+                            disabled={savingWorkerId === w.id}
+                            className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {savingWorkerId === w.id ? t.saving : t.saveBranchLang}
+                          </button>
+
+                          <button
+                            onClick={() => deleteWorker(w)}
+                            disabled={deletingWorkerId === w.id}
+                            className="rounded-2xl bg-rose-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingWorkerId === w.id ? t.deleting : t.deleteUser}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -707,9 +1061,7 @@ export default function Home() {
               </table>
 
               {workers.length === 0 && (
-                <div className="px-6 py-10 text-center text-stone-500">
-                  لا يوجد عمال حالياً
-                </div>
+                <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
               )}
             </div>
           </section>
@@ -719,10 +1071,8 @@ export default function Home() {
           <div className="border-b border-stone-100 px-6 py-5 md:px-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
-                <h2 className="text-xl font-extrabold text-stone-900">الطلبات الحالية</h2>
-                <p className="mt-1 text-sm text-stone-500">
-                  الطلبات المسلمة تختفي من صفحة العامل تلقائيًا.
-                </p>
+                <h2 className="text-xl font-extrabold text-stone-900">{t.currentOrders}</h2>
+                <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
               </div>
 
               <div className="w-full md:w-[380px]">
@@ -730,7 +1080,7 @@ export default function Home() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="ابحث برقم الفاتورة أو اسم العميل أو الجوال أو الفرع"
+                  placeholder={t.searchPlaceholder}
                   className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                 />
               </div>
@@ -741,25 +1091,21 @@ export default function Home() {
             <table className="min-w-full text-right">
               <thead className="bg-stone-50/90 text-sm text-stone-600">
                 <tr>
-                  <th className="px-6 py-4 font-bold md:px-8">رقم الفاتورة</th>
-                  <th className="px-6 py-4 font-bold">العميل</th>
-                  <th className="px-6 py-4 font-bold">الجوال</th>
-                  <th className="px-6 py-4 font-bold">الفرع</th>
-                  <th className="px-6 py-4 font-bold">الحالة</th>
-                  <th className="px-6 py-4 font-bold md:px-8">الإجراء</th>
+                  <th className="px-6 py-4 font-bold md:px-8">{t.invoice}</th>
+                  <th className="px-6 py-4 font-bold">{t.customer}</th>
+                  <th className="px-6 py-4 font-bold">{t.phone}</th>
+                  <th className="px-6 py-4 font-bold">{t.branch}</th>
+                  <th className="px-6 py-4 font-bold">{t.status}</th>
+                  <th className="px-6 py-4 font-bold md:px-8">{t.actions}</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
                 {filteredOrders.map((o) => (
                   <tr key={o.id} className="transition hover:bg-stone-50/70">
-                    <td className="px-6 py-4 font-extrabold text-stone-900 md:px-8">
-                      #{o.receipt_number}
-                    </td>
+                    <td className="px-6 py-4 font-extrabold text-stone-900 md:px-8">#{o.receipt_number}</td>
                     <td className="px-6 py-4 font-semibold">{o.customer_name || '-'}</td>
-                    <td className="px-6 py-4 text-stone-600" dir="ltr">
-                      {o.phone || '-'}
-                    </td>
+                    <td className="px-6 py-4 text-stone-600" dir="ltr">{o.phone || '-'}</td>
                     <td className="px-6 py-4">{o.branch || '-'}</td>
                     <td className="px-6 py-4">
                       <span
@@ -783,10 +1129,10 @@ export default function Home() {
                             }`}
                           >
                             {busyId === o.id && o.status !== 'ready'
-                              ? 'جاري التحديث...'
+                              ? t.updating
                               : o.status === 'ready'
-                              ? 'تم التجهيز ✔️'
-                              : 'تم التجهيز'}
+                              ? `${t.ready} ✔️`
+                              : t.ready}
                           </button>
                         )}
 
@@ -802,10 +1148,10 @@ export default function Home() {
                           }`}
                         >
                           {busyId === o.id && o.status === 'ready'
-                            ? 'جاري التحديث...'
+                            ? t.updating
                             : o.status === 'closed'
-                            ? 'تم التسليم ✔️'
-                            : 'تم التسليم'}
+                            ? `${t.delivered} ✔️`
+                            : t.delivered}
                         </button>
                       </div>
                     </td>
@@ -815,15 +1161,11 @@ export default function Home() {
             </table>
 
             {filteredOrders.length === 0 && orders.length > 0 && (
-              <div className="px-6 py-10 text-center text-stone-500">
-                لا توجد نتائج مطابقة أو لا توجد طلبات مفتوحة
-              </div>
+              <div className="px-6 py-10 text-center text-stone-500">{t.noMatchingOrders}</div>
             )}
 
             {orders.length === 0 && (
-              <div className="px-6 py-10 text-center text-stone-500">
-                لا توجد طلبات حالياً
-              </div>
+              <div className="px-6 py-10 text-center text-stone-500">{t.noOrders}</div>
             )}
           </div>
         </section>
