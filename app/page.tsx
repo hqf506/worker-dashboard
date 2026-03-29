@@ -312,6 +312,12 @@ export default function Home() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [pageView, setPageView] = useState<PageView>('orders');
+
+  useEffect(() => {
+    if (profile?.role === 'worker' && pageView !== 'orders') {
+      setPageView('orders');
+    }
+  }, [profile?.role, pageView]);
   const [orderTab, setOrderTab] = useState<OrderTab>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showClosedOrders, setShowClosedOrders] = useState(false);
@@ -1554,7 +1560,7 @@ export default function Home() {
           </section>
         )}
 
-        {(profile.role === 'worker' || pageView === 'orders') && (
+        {((profile.role === 'worker') || (profile.role === 'admin' && pageView === 'orders')) && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
