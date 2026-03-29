@@ -333,6 +333,17 @@ export default function Home() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const fetchingOrdersRef = useRef(false);
+  const ordersChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const savedLang = getStoredLanguage();
@@ -377,11 +388,14 @@ export default function Home() {
   const t = translations[currentLang];
   const isArabic = currentLang === 'ar';
 
-  const statusLabels: Record<string, string> = {
-    new: t.newStatus,
-    ready: t.readyStatus,
-    closed: t.closedStatus,
-  };
+  const statusLabels = useMemo<Record<string, string>>(
+    () => ({
+      new: t.newStatus,
+      ready: t.readyStatus,
+      closed: t.closedStatus,
+    }),
+    [t.newStatus, t.readyStatus, t.closedStatus]
+  );
 
   const statusStyles: Record<string, string> = {
     new: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
@@ -472,7 +486,10 @@ export default function Home() {
   };
 
   const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
-    if (!silent) setRefreshingOrders(true);
+    if (fetchingOrdersRef.current) return;
+
+    fetchingOrdersRef.current = true;
+    if (!silent && mountedRef.current) setRefreshingOrders(true);
 
     try {
       const activeProfile = profileOverride ?? profile;
@@ -485,13 +502,16 @@ export default function Home() {
       const { data, error } = await query;
 
       if (error) {
-        showMessage('error', t.updateStatusError);
+        if (mountedRef.current) showMessage('error', t.updateStatusError);
         return;
       }
 
-      setOrders((data as Order[]) || []);
+      if (mountedRef.current) {
+        setOrders((data as Order[]) || []);
+      }
     } finally {
-      if (!silent) setRefreshingOrders(false);
+      fetchingOrdersRef.current = false;
+      if (!silent && mountedRef.current) setRefreshingOrders(false);
     }
   };
 
@@ -867,6 +887,10 @@ export default function Home() {
 
     return () => {
       if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
+      if (ordersChannelRef.current) {
+        supabase.removeChannel(ordersChannelRef.current);
+        ordersChannelRef.current = null;
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -876,24 +900,47 @@ export default function Home() {
 
     fetchOrders(true, profile);
 
+    if (ordersChannelRef.current) {
+      supabase.removeChannel(ordersChannelRef.current);
+      ordersChannelRef.current = null;
+    }
+
     const channel = supabase
-      .channel('orders-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        if (!autoRefresh) return;
-        fetchOrders(true, profile);
+      .channel(`orders-channel-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
+        if (!autoRefresh || fetchingOrdersRef.current || document.visibilityState !== 'visible') return;
+        await fetchOrders(true, profile);
       })
       .subscribe();
 
+    ordersChannelRef.current = channel;
+
     return () => {
-      supabase.removeChannel(channel);
+      if (ordersChannelRef.current) {
+        supabase.removeChannel(ordersChannelRef.current);
+        ordersChannelRef.current = null;
+      }
     };
-  }, [user, profile, autoRefresh]);
+  }, [user?.id, profile?.id, profile?.role, profile?.branch, autoRefresh]);
 
   useEffect(() => {
     if (profile?.role === 'admin') {
       fetchWorkers(profile);
     }
   }, [profile]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user && profile && !fetchingOrdersRef.current) {
+        fetchOrders(true, profile);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [user?.id, profile?.id, profile?.branch, profile?.role]);
 
   const visibleOrders = useMemo(() => {
     return orders
