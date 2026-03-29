@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const adminClient = createClient(supabaseUrl, serviceRoleKey);
-const normalClient = createClient(supabaseUrl, supabaseAnonKey);
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,22 +15,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'بيانات ناقصة' }, { status: 400 });
     }
 
-    if (String(newPassword).trim().length < 6) {
+    const cleanPassword = String(newPassword).trim();
+
+    if (cleanPassword.length < 6) {
       return NextResponse.json(
         { error: 'كلمة المرور الجديدة لازم تكون 6 أحرف أو أكثر' },
         { status: 400 }
       );
     }
 
-    const { data: adminProfile, error: adminCheckError } = await normalClient
+    // التحقق من أن المرسل أدمن
+    const { data: adminProfile, error: adminError } = await adminClient
       .from('profiles')
       .select('id, role')
       .eq('id', adminUserId)
       .maybeSingle();
 
-    if (adminCheckError) {
+    console.log('RESET ADMIN CHECK:', adminUserId, adminProfile, adminError);
+
+    if (adminError) {
       return NextResponse.json(
-        { error: adminCheckError.message || 'تعذر التحقق من صلاحية الأدمن' },
+        { error: adminError.message || 'تعذر التحقق من الأدمن' },
         { status: 500 }
       );
     }
@@ -44,11 +47,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // التحقق من أن الهدف عامل
     const { data: workerProfile, error: workerError } = await adminClient
       .from('profiles')
       .select('id, role, full_name')
       .eq('id', workerId)
       .maybeSingle();
+
+    console.log('RESET WORKER CHECK:', workerId, workerProfile, workerError);
 
     if (workerError) {
       return NextResponse.json(
@@ -65,8 +71,10 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: updateError } = await adminClient.auth.admin.updateUserById(workerId, {
-      password: String(newPassword).trim(),
+      password: cleanPassword,
     });
+
+    console.log('RESET UPDATE:', workerId, updateError);
 
     if (updateError) {
       return NextResponse.json(
@@ -80,6 +88,7 @@ export async function POST(req: NextRequest) {
       message: 'تم تحديث كلمة المرور بنجاح',
     });
   } catch (error: any) {
+    console.error('RESET PASSWORD FATAL:', error);
     return NextResponse.json(
       { error: error?.message || 'حدث خطأ غير متوقع' },
       { status: 500 }
