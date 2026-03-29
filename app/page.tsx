@@ -21,6 +21,7 @@ type Order = {
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
 type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
+type OrderTab = 'all' | 'new' | 'ready';
 
 type Profile = {
   id: string;
@@ -256,6 +257,42 @@ function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
 
+
+function formatOrderAge(dateString: string, lang: Language) {
+  const createdAt = new Date(dateString).getTime();
+  if (Number.isNaN(createdAt)) return '-';
+
+  const diffMs = Math.max(Date.now() - createdAt, 0);
+  const totalMinutes = Math.floor(diffMs / 60000);
+
+  if (totalMinutes < 1) {
+    return lang === 'ar' ? 'الآن' : 'Just now';
+  }
+
+  if (totalMinutes < 60) {
+    return lang === 'ar' ? `قبل ${totalMinutes} دقيقة` : `${totalMinutes} min ago`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours < 24) {
+    return lang === 'ar' ? `قبل ${hours} ساعة` : `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+  return lang === 'ar' ? `قبل ${days} يوم` : `${days}d ago`;
+}
+
+function formatOrderTime(dateString: string, lang: Language) {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return new Intl.DateTimeFormat(lang === 'ar' ? 'ar-SA' : 'en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+
 export default function Home() {
   const [uiLanguage, setUiLanguage] = useState<Language>(() => getStoredLanguage());
 
@@ -265,6 +302,9 @@ export default function Home() {
   const [workers, setWorkers] = useState<Profile[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [orderTab, setOrderTab] = useState<OrderTab>('all');
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [clockTick, setClockTick] = useState(Date.now());
 
   const [authLoading, setAuthLoading] = useState(true);
   const [bootLoading, setBootLoading] = useState(true);
@@ -320,6 +360,17 @@ export default function Home() {
       setUiLanguage(storedLang);
     }
   }, [profile?.id, profile?.language]);
+
+  useEffect(() => {
+    if (profile?.role !== 'worker') return;
+
+    const interval = window.setInterval(() => {
+      setClockTick(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(interval);
+  }, [profile?.role]);
+
 
   const currentLang: Language = uiLanguage;
 
@@ -827,15 +878,16 @@ export default function Home() {
 
     const channel = supabase
       .channel('orders-channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
-        fetchOrders(true, profile)
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        if (!autoRefresh) return;
+        fetchOrders(true, profile);
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, profile]);
+  }, [user, profile, autoRefresh]);
 
   useEffect(() => {
     if (profile?.role === 'admin') {
@@ -844,7 +896,9 @@ export default function Home() {
   }, [profile]);
 
   const visibleOrders = useMemo(() => {
-    return orders.filter((o) => o.status !== 'closed');
+    return orders
+      .filter((o) => o.status !== 'closed')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   }, [orders]);
 
   const counts = useMemo(() => {
@@ -868,6 +922,21 @@ export default function Home() {
       safeText(statusLabels[o.status] || o.status).toLowerCase().includes(q)
     );
   }, [visibleOrders, search, statusLabels]);
+
+  const workerTabOrders = useMemo(() => {
+    if (orderTab === 'new') return filteredOrders.filter((o) => o.status === 'new');
+    if (orderTab === 'ready') return filteredOrders.filter((o) => o.status === 'ready');
+    return filteredOrders;
+  }, [filteredOrders, orderTab]);
+
+  const ordersToRender = profile?.role === 'worker' ? workerTabOrders : filteredOrders;
+  void clockTick;
+
+  const workerTabs = [
+    { key: 'all' as const, label: t.openOrders, count: counts.total },
+    { key: 'new' as const, label: t.newOrders, count: counts.new },
+    { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
+  ];
 
   if (bootLoading || authLoading || (profileLoading && !profile)) {
     return (
@@ -1357,7 +1426,7 @@ export default function Home() {
                 <p className="mt-1 text-sm text-stone-500">{t.currentOrdersDesc}</p>
               </div>
 
-              <div className="w-full lg:w-[380px]">
+              <div className="flex w-full flex-col gap-3 lg:w-[540px]">
                 <input
                   type="text"
                   value={search}
@@ -1365,17 +1434,62 @@ export default function Home() {
                   placeholder={t.searchPlaceholder}
                   className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                 />
+
+                {profile.role === 'worker' && (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="grid grid-cols-3 gap-2">
+                      {workerTabs.map((tab) => (
+                        <button
+                          key={tab.key}
+                          onClick={() => setOrderTab(tab.key)}
+                          className={cx(
+                            'rounded-2xl px-3 py-2 text-sm font-extrabold shadow-sm transition',
+                            orderTab === tab.key
+                              ? 'bg-stone-900 text-white'
+                              : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
+                          )}
+                        >
+                          <span>{tab.label}</span>
+                          <span className="ms-2 inline-flex min-w-6 justify-center rounded-full bg-white/20 px-2 py-0.5 text-xs">
+                            {tab.count}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <button
+                      onClick={() => setAutoRefresh((prev) => !prev)}
+                      className={cx(
+                        'rounded-2xl px-4 py-2 text-sm font-bold shadow-sm transition',
+                        autoRefresh
+                          ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'
+                          : 'bg-stone-100 text-stone-700 ring-1 ring-stone-200'
+                      )}
+                    >
+                      {isArabic ? `التحديث التلقائي: ${autoRefresh ? 'شغال' : 'موقف'}` : `Auto refresh: ${autoRefresh ? 'On' : 'Off'}`}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
           <div className="grid gap-3 px-4 py-4 sm:px-6 md:hidden">
-            {filteredOrders.map((o) => (
-              <div key={o.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+            {ordersToRender.map((o) => (
+              <div
+                key={o.id}
+                className={cx(
+                  'rounded-3xl border bg-white p-4 shadow-sm',
+                  o.status === 'new' ? 'border-amber-200 ring-2 ring-amber-100' : 'border-stone-200'
+                )}
+              >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm text-stone-500">{t.invoice}</div>
                     <div className="text-lg font-extrabold text-stone-900">#{o.receipt_number}</div>
+                    <div className="mt-1 text-xs font-bold text-stone-500">
+                      {formatOrderAge(o.created_at, currentLang)} • {formatOrderTime(o.created_at, currentLang)}
+                    </div>
                   </div>
                   <span
                     className={cx(
@@ -1391,6 +1505,10 @@ export default function Home() {
                   <InfoItem label={t.customer} value={o.customer_name || '-'} />
                   <InfoItem label={t.phone} value={o.phone || '-'} dir="ltr" />
                   <InfoItem label={t.branch} value={o.branch || '-'} />
+                  <InfoItem
+                    label={isArabic ? 'وقت الطلب' : 'Order time'}
+                    value={`${formatOrderAge(o.created_at, currentLang)}`}
+                  />
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1399,7 +1517,7 @@ export default function Home() {
                       onClick={() => updateStatus(o.id, 'ready')}
                       disabled={busyId === o.id || o.status === 'ready'}
                       className={cx(
-                        'rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-sm transition',
+                        'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
                         o.status === 'ready'
                           ? 'cursor-not-allowed bg-stone-400'
                           : 'bg-sky-600 hover:bg-sky-700'
@@ -1435,7 +1553,7 @@ export default function Home() {
               </div>
             ))}
 
-            {filteredOrders.length === 0 && orders.length > 0 && (
+            {ordersToRender.length === 0 && orders.length > 0 && (
               <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
                 {t.noMatchingOrders}
               </div>
@@ -1462,9 +1580,12 @@ export default function Home() {
               </thead>
 
               <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
-                {filteredOrders.map((o) => (
-                  <tr key={o.id} className="transition hover:bg-stone-50/70">
-                    <td className="px-6 py-4 font-extrabold text-stone-900 md:px-8">#{o.receipt_number}</td>
+                {ordersToRender.map((o) => (
+                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40')}>
+                    <td className="px-6 py-4 md:px-8">
+                      <div className="font-extrabold text-stone-900">#{o.receipt_number}</div>
+                      <div className="mt-1 text-xs font-bold text-stone-500">{formatOrderAge(o.created_at, currentLang)}</div>
+                    </td>
                     <td className="px-6 py-4 font-semibold">{o.customer_name || '-'}</td>
                     <td className="px-6 py-4 text-stone-600" dir="ltr">{o.phone || '-'}</td>
                     <td className="px-6 py-4">{o.branch || '-'}</td>
@@ -1485,7 +1606,7 @@ export default function Home() {
                             onClick={() => updateStatus(o.id, 'ready')}
                             disabled={busyId === o.id || o.status === 'ready'}
                             className={cx(
-                              'rounded-2xl px-4 py-2 text-sm font-bold text-white shadow-sm transition',
+                              'rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-sm transition',
                               o.status === 'ready'
                                 ? 'cursor-not-allowed bg-stone-400'
                                 : 'bg-sky-600 hover:bg-sky-700'
@@ -1524,7 +1645,7 @@ export default function Home() {
               </tbody>
             </table>
 
-            {filteredOrders.length === 0 && orders.length > 0 && (
+            {ordersToRender.length === 0 && orders.length > 0 && (
               <div className="px-6 py-10 text-center text-stone-500">{t.noMatchingOrders}</div>
             )}
 
