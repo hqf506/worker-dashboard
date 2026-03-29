@@ -284,7 +284,7 @@ const translations = {
   },
 } as const;
 
-type TranslationMap = (typeof translations)['ar'];
+type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
 
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
