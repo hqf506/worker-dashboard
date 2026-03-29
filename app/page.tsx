@@ -22,6 +22,7 @@ type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
 type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
+type PageView = 'orders' | 'workers' | 'create-worker';
 
 type Profile = {
   id: string;
@@ -310,6 +311,7 @@ export default function Home() {
   const [workers, setWorkers] = useState<Profile[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [pageView, setPageView] = useState<PageView>('orders');
   const [orderTab, setOrderTab] = useState<OrderTab>('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showClosedOrders, setShowClosedOrders] = useState(false);
@@ -1183,13 +1185,69 @@ export default function Home() {
         </section>
 
         {profile.role === 'admin' && (
-          <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
-            <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-              <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.addWorker}</h2>
-              <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
-            </div>
+          <section className="rounded-[28px] border border-white/60 bg-white/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px] sm:p-6">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <button
+                onClick={() => setPageView('orders')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'orders'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">📦</div>
+                <div className="mt-2 text-base font-extrabold">{t.currentOrders}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'orders' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? `المفتوحة ${counts.total} / المغلقة ${counts.closed}` : `Open ${counts.total} / Closed ${counts.closed}`}
+                </div>
+              </button>
 
-            <div className="grid gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-4 md:px-8">
+              <button
+                onClick={() => setPageView('workers')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'workers'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">👷‍♂️</div>
+                <div className="mt-2 text-base font-extrabold">{t.currentWorkers}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'workers' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? `${workers.length} مستخدم` : `${workers.length} users`}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setPageView('create-worker')}
+                className={cx(
+                  'rounded-[24px] border px-5 py-5 text-center shadow-sm transition',
+                  pageView === 'create-worker'
+                    ? 'border-stone-900 bg-stone-900 text-white'
+                    : 'border-stone-200 bg-white text-stone-800 hover:bg-stone-50'
+                )}
+              >
+                <div className="text-2xl">➕</div>
+                <div className="mt-2 text-base font-extrabold">{t.addWorker}</div>
+                <div className={cx('mt-1 text-sm', pageView === 'create-worker' ? 'text-white/80' : 'text-stone-500')}>
+                  {isArabic ? 'إنشاء يوزر جديد' : 'Create a new user'}
+                </div>
+              </button>
+            </div>
+          </section>
+        )}
+
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
+          <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
+            {pageView === 'create-worker' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <h2 className="text-lg font-extrabold text-stone-900 sm:text-xl">{t.addWorker}</h2>
+                  <p className="mt-1 text-sm text-stone-500">{t.addWorkerDesc}</p>
+                </div>
+
+                <div className="grid gap-3 px-4 py-4 sm:gap-4 sm:px-6 sm:py-6 md:grid-cols-2 xl:grid-cols-4 md:px-8">
               <input
                 type="text"
                 value={workerName}
@@ -1221,13 +1279,20 @@ export default function Home() {
               >
                 {workerLoading ? t.addingWorker : t.addWorkerBtn}
               </button>
-            </div>
+                </div>
+              </>
+            )}
 
-            <div className="border-t border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
-              <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
-            </div>
+            {pageView === 'workers' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
+                  <p className="mt-1 text-sm text-stone-500">
+                    {isArabic ? 'هنا تقدر تطلع على جميع المستخدمين وتعدل صلاحياتهم وبياناتهم.' : 'Manage all users, roles, and settings from here.'}
+                  </p>
+                </div>
 
-            <div className="grid gap-3 px-4 pb-4 sm:px-6 sm:pb-6 md:hidden">
+                <div className="grid gap-3 px-4 pb-4 pt-4 sm:px-6 sm:pb-6 md:hidden">
               {workers.length === 0 && (
                 <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
                   {t.noWorkers}
@@ -1484,10 +1549,13 @@ export default function Home() {
                 <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
               )}
             </div>
+              </>
+            )}
           </section>
         )}
 
-        <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
+        {(profile.role === 'worker' || pageView === 'orders') && (
+          <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
@@ -1764,6 +1832,7 @@ export default function Home() {
             )}
           </div>
         </section>
+        )}
       </div>
     </main>
   );
