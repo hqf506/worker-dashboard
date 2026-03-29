@@ -249,6 +249,7 @@ export default function Home() {
   const [search, setSearch] = useState('');
 
   const [authLoading, setAuthLoading] = useState(true);
+  const [bootLoading, setBootLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
@@ -336,33 +337,37 @@ export default function Home() {
     return { data: (data as Profile | null) ?? null, error: null };
   };
 
-  const fetchProfileWithRetry = async (userId: string, useRetry = true) => {
-  setProfileLoading(true);
+  const fetchProfileWithRetry = async (
+    userId: string,
+    useRetry = true,
+    showLoader = false
+  ) => {
+    if (showLoader) setProfileLoading(true);
 
-  try {
-    const delays = useRetry ? [0, 400, 900] : [0];
+    try {
+      const delays = useRetry ? [0, 400, 900] : [0];
 
-    for (let i = 0; i < delays.length; i++) {
-      if (delays[i] > 0) await sleep(delays[i]);
+      for (let i = 0; i < delays.length; i++) {
+        if (delays[i] > 0) await sleep(delays[i]);
 
-      const { data, error } = await fetchProfileOnce(userId);
+        const { data, error } = await fetchProfileOnce(userId);
 
-      if (data) {
-        setProfile(data);
-        return data;
+        if (data) {
+          setProfile(data);
+          return data;
+        }
+
+        if (error) {
+          console.error('PROFILE FETCH ERROR:', error);
+        }
       }
 
-      if (error) {
-        console.error('PROFILE FETCH ERROR:', error);
-      }
+      setProfile(null);
+      return null;
+    } finally {
+      if (showLoader) setProfileLoading(false);
     }
-
-    setProfile(null);
-    return null;
-  } finally {
-    setProfileLoading(false);
-  }
-};
+  };
 
   const fetchOrders = async (silent = false, profileOverride?: Profile | null) => {
     if (!silent) setRefreshingOrders(true);
@@ -408,33 +413,33 @@ export default function Home() {
   };
 
   const login = async () => {
-  if (!loginUsername.trim() || !loginPassword.trim()) {
-    showMessage('error', t.enterCredentials);
-    return;
-  }
-
-  setLoginLoading(true);
-  setProfile(null);
-
-  try {
-    const fakeEmail = usernameToEmail(loginUsername);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: fakeEmail,
-      password: loginPassword,
-    });
-
-    if (error) {
-      showMessage('error', error.message || t.loginError);
+    if (!loginUsername.trim() || !loginPassword.trim()) {
+      showMessage('error', t.enterCredentials);
       return;
     }
 
-    showMessage('success', t.loginSuccess);
-  } catch {
-    showMessage('error', t.loginError);
-  } finally {
-    setLoginLoading(false);
-  }
-};
+    setLoginLoading(true);
+    setProfile(null);
+
+    try {
+      const fakeEmail = usernameToEmail(loginUsername);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: fakeEmail,
+        password: loginPassword,
+      });
+
+      if (error) {
+        showMessage('error', error.message || t.loginError);
+        return;
+      }
+
+      showMessage('success', t.loginSuccess);
+    } catch {
+      showMessage('error', t.loginError);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -700,14 +705,17 @@ export default function Home() {
           setProfile(null);
           setProfileLoading(false);
           setAuthLoading(false);
+          setBootLoading(false);
           return;
         }
 
         setUser(currentUser);
-        const currentProfile = await fetchProfileWithRetry(currentUser.id, false);
+        const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
 
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
+        } else {
+          setWorkers([]);
         }
 
         if (currentProfile) {
@@ -715,6 +723,7 @@ export default function Home() {
         }
       } finally {
         setAuthLoading(false);
+        setBootLoading(false);
       }
     };
 
@@ -726,24 +735,30 @@ export default function Home() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
-  if (currentUser) {
-  const useRetry = _event === 'SIGNED_IN';
-  const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry);
+      if (currentUser) {
+        const useRetry = _event === 'SIGNED_IN';
+        const showLoader = _event === 'SIGNED_IN';
 
-  if (currentProfile?.role === 'admin') {
-    await fetchWorkers(currentProfile);
-  } else {
-    setWorkers([]);
-  }
+        const currentProfile = await fetchProfileWithRetry(
+          currentUser.id,
+          useRetry,
+          showLoader
+        );
 
-  if (currentProfile) {
-    await fetchOrders(true, currentProfile);
-  }
-} else {
-  setProfile(null);
-  setProfileLoading(false);
-  setWorkers([]);
-}
+        if (currentProfile?.role === 'admin') {
+          await fetchWorkers(currentProfile);
+        } else {
+          setWorkers([]);
+        }
+
+        if (currentProfile) {
+          await fetchOrders(true, currentProfile);
+        }
+      } else {
+        setProfile(null);
+        setProfileLoading(false);
+        setWorkers([]);
+      }
 
       setAuthLoading(false);
     });
@@ -803,7 +818,7 @@ export default function Home() {
     );
   }, [visibleOrders, search, statusLabels]);
 
-  if (authLoading || profileLoading) {
+  if (bootLoading || authLoading || (profileLoading && !profile)) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1011,7 +1026,6 @@ export default function Home() {
               <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
             </div>
 
-            {/* mobile / tablet cards */}
             <div className="grid gap-3 px-4 pb-4 sm:px-6 sm:pb-6 md:hidden">
               {workers.length === 0 && (
                 <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
@@ -1138,7 +1152,6 @@ export default function Home() {
               })}
             </div>
 
-            {/* desktop table */}
             <div className="hidden overflow-x-auto md:block">
               <table className="min-w-full text-right">
                 <thead className="bg-stone-50/90 text-sm text-stone-600">
@@ -1293,7 +1306,6 @@ export default function Home() {
             </div>
           </div>
 
-          {/* mobile / tablet order cards */}
           <div className="grid gap-3 px-4 py-4 sm:px-6 md:hidden">
             {filteredOrders.map((o) => (
               <div key={o.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
@@ -1373,7 +1385,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* desktop table */}
           <div className="hidden overflow-x-auto md:block">
             <table className="min-w-full text-right">
               <thead className="bg-stone-50/90 text-sm text-stone-600">
