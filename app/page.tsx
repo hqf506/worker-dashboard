@@ -284,6 +284,8 @@ const translations = {
   },
 } as const;
 
+type TranslationMap = (typeof translations)['ar'];
+
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const usernameToEmail = (username: string) => {
@@ -1935,7 +1937,7 @@ function OrdersSection({
   busyId: number | null;
   profileRole: Role;
   updateStatus: (id: number, status: string) => Promise<void>;
-  t: (typeof translations)['ar'];
+  t: TranslationMap;
   currentLang: Language;
   isArabic: boolean;
   statusLabels: Record<string, string>;
