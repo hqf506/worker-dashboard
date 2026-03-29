@@ -247,6 +247,14 @@ const usernameToEmail = (username: string) => {
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const withTimeout = async <T,>(promise: Promise<T>, ms = 8000): Promise<T> => {
+  return await Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout')), ms)
+    ),
+  ]);
+};
 
 const UI_LANGUAGE_STORAGE_KEY = 'worker-dashboard-ui-language';
 
@@ -360,6 +368,17 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!mountedRef.current) return;
+      setBootLoading(false);
+      setAuthLoading(false);
+      setProfileLoading(false);
+    }, 9000);
+
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const savedLang = getStoredLanguage();
     setUiLanguage(savedLang);
     applyDocumentLanguage(savedLang);
@@ -454,17 +473,27 @@ export default function Home() {
   };
 
   const fetchProfileOnce = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
+    try {
+      const result = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle(),
+        8000
+      );
 
-    if (error) {
+      const { data, error } = result as any;
+
+      if (error) {
+        return { data: null, error };
+      }
+
+      return { data: (data as Profile | null) ?? null, error: null };
+    } catch (error) {
+      console.error('PROFILE FETCH TIMEOUT/ERROR:', error);
       return { data: null, error };
     }
-
-    return { data: (data as Profile | null) ?? null, error: null };
   };
 
   const fetchProfileWithRetry = async (
@@ -513,7 +542,8 @@ export default function Home() {
         query = query.eq('branch', activeProfile.branch);
       }
 
-      const { data, error } = await query;
+      const result = await withTimeout(query, 8000);
+      const { data, error } = result as any;
 
       if (error) {
         showMessage('error', t.updateStatusError);
@@ -523,6 +553,9 @@ export default function Home() {
       if (mountedRef.current) {
         setOrders((data as Order[]) || []);
       }
+    } catch (error) {
+      console.error('ORDERS FETCH TIMEOUT/ERROR:', error);
+      showMessage('error', isArabic ? 'انتهت مهلة تحميل الطلبات' : 'Orders request timed out');
     } finally {
       fetchingOrdersRef.current = false;
       if (!silent && mountedRef.current) setRefreshingOrders(false);
@@ -533,19 +566,31 @@ export default function Home() {
     const activeProfile = currentProfile ?? profile;
     if (activeProfile?.role !== 'admin') return;
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
+    try {
+      const result = await withTimeout(
+        supabase
+          .from('profiles')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        8000
+      );
 
-    if (error) {
-      showMessage('error', isArabic ? 'تعذر تحميل قائمة المستخدمين' : 'Unable to load users list');
-      return;
+      const { data, error } = result as any;
+
+      if (error) {
+        showMessage('error', isArabic ? 'تعذر تحميل قائمة المستخدمين' : 'Unable to load users list');
+        return;
+      }
+
+      const list = ((data as Profile[]) || []).filter((x) => x.id !== activeProfile.id);
+      if (mountedRef.current) {
+        setWorkers(list);
+        hydrateWorkerMaps(list);
+      }
+    } catch (error) {
+      console.error('WORKERS FETCH TIMEOUT/ERROR:', error);
+      showMessage('error', isArabic ? 'انتهت مهلة تحميل المستخدمين' : 'Users request timed out');
     }
-
-    const list = ((data as Profile[]) || []).filter((x) => x.id !== activeProfile.id);
-    setWorkers(list);
-    hydrateWorkerMaps(list);
   };
 
   const login = async () => {
@@ -834,9 +879,10 @@ export default function Home() {
       try {
         const {
           data: { user: currentUser },
-        } = await supabase.auth.getUser();
+        } = await withTimeout(supabase.auth.getUser(), 8000);
 
         if (!currentUser) {
+          if (!mountedRef.current) return;
           setUser(null);
           setProfile(null);
           setProfileLoading(false);
@@ -845,21 +891,26 @@ export default function Home() {
           return;
         }
 
+        if (!mountedRef.current) return;
         setUser(currentUser);
         const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
 
         if (currentProfile?.role === 'admin') {
           await fetchWorkers(currentProfile);
-        } else {
+        } else if (mountedRef.current) {
           setWorkers([]);
         }
 
         if (currentProfile) {
           await fetchOrders(true, currentProfile);
         }
+      } catch (error) {
+        console.error('INIT AUTH ERROR:', error);
       } finally {
-        setAuthLoading(false);
-        setBootLoading(false);
+        if (mountedRef.current) {
+          setAuthLoading(false);
+          setBootLoading(false);
+        }
       }
     };
 
@@ -868,15 +919,21 @@ export default function Home() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
+        return;
+      }
+
       const currentUser = session?.user ?? null;
 
       if (event === 'SIGNED_OUT') {
+        if (!mountedRef.current) return;
         setUser(null);
         setProfile(null);
         setProfileLoading(false);
         setWorkers([]);
         setOrders([]);
         setAuthLoading(false);
+        setBootLoading(false);
         return;
       }
 
@@ -884,29 +941,26 @@ export default function Home() {
         return;
       }
 
+      if (!mountedRef.current) return;
       setUser(currentUser);
 
       if (!currentUser) {
         setProfile(null);
-        setProfileLoading(false);
         setWorkers([]);
         setOrders([]);
         setAuthLoading(false);
+        setBootLoading(false);
         return;
       }
 
       const useRetry = event === 'SIGNED_IN';
       const showLoader = event === 'SIGNED_IN';
 
-      const currentProfile = await fetchProfileWithRetry(
-        currentUser.id,
-        useRetry,
-        showLoader
-      );
+      const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry, showLoader);
 
       if (currentProfile?.role === 'admin') {
         await fetchWorkers(currentProfile);
-      } else {
+      } else if (mountedRef.current) {
         setWorkers([]);
       }
 
@@ -914,7 +968,10 @@ export default function Home() {
         await fetchOrders(true, currentProfile);
       }
 
-      setAuthLoading(false);
+      if (mountedRef.current) {
+        setAuthLoading(false);
+        setBootLoading(false);
+      }
     });
 
     return () => {
