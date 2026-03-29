@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createClient, User } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -11,9 +11,9 @@ const supabase = createClient(
 type Order = {
   id: number;
   receipt_number: string;
-  customer_name: string;
-  phone: string;
-  branch: string;
+  customer_name: string | null;
+  phone: string | null;
+  branch: string | null;
   status: string;
   created_at: string;
 };
@@ -21,7 +21,7 @@ type Order = {
 type Profile = {
   id: string;
   email: string;
-  username?: string;
+  username?: string | null;
   full_name: string;
   role: 'admin' | 'worker';
   created_at?: string;
@@ -38,6 +38,15 @@ const statusStyles: Record<string, string> = {
   ready: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
   closed: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
 };
+
+const normalizeUsername = (value: string) => value.trim().toLowerCase();
+
+const usernameToEmail = (username: string) => {
+  const clean = normalizeUsername(username);
+  return clean.includes('@') ? clean : `${clean}@worker.local`;
+};
+
+const safeText = (value: string | null | undefined) => (value ?? '').toString();
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -60,9 +69,18 @@ export default function Home() {
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const showMessage = (type: 'success' | 'error', text: string) => {
     setMessage({ type, text });
-    setTimeout(() => setMessage(null), 3500);
+
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+    }
+
+    messageTimeoutRef.current = setTimeout(() => {
+      setMessage(null);
+    }, 3500);
   };
 
   const fetchProfile = async (userId: string) => {
@@ -96,16 +114,16 @@ export default function Home() {
 
     if (error) {
       console.error('ORDERS ERROR:', error);
+      showMessage('error', 'تعذر تحميل الطلبات');
       return;
     }
 
-    if (data) {
-      setOrders(data as Order[]);
-    }
+    setOrders((data as Order[]) || []);
   };
 
-  const fetchWorkers = async () => {
-    if (profile?.role !== 'admin') return;
+  const fetchWorkers = async (currentProfile?: Profile | null) => {
+    const activeProfile = currentProfile ?? profile;
+    if (activeProfile?.role !== 'admin') return;
 
     const { data, error } = await supabase
       .from('profiles')
@@ -115,40 +133,41 @@ export default function Home() {
 
     if (error) {
       console.error('WORKERS ERROR:', error);
+      showMessage('error', 'تعذر تحميل قائمة العمال');
       return;
     }
 
-    if (data) {
-      setWorkers(data as Profile[]);
-    }
+    setWorkers((data as Profile[]) || []);
   };
 
   const login = async () => {
-    if (!loginUsername || !loginPassword) {
+    if (!loginUsername.trim() || !loginPassword.trim()) {
       showMessage('error', 'أدخل اسم المستخدم وكلمة المرور');
       return;
     }
 
     setLoginLoading(true);
 
-    const cleanUsername = loginUsername.trim().toLowerCase();
-    const fakeEmail = cleanUsername.includes('@')
-      ? cleanUsername
-      : `${cleanUsername}@worker.local`;
+    try {
+      const fakeEmail = usernameToEmail(loginUsername);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: fakeEmail,
-      password: loginPassword,
-    });
+      const { error } = await supabase.auth.signInWithPassword({
+        email: fakeEmail,
+        password: loginPassword,
+      });
 
-    setLoginLoading(false);
+      if (error) {
+        showMessage('error', error.message || 'فشل تسجيل الدخول');
+        return;
+      }
 
-    if (error) {
-      showMessage('error', error.message || 'فشل تسجيل الدخول');
-      return;
+      showMessage('success', 'تم تسجيل الدخول بنجاح');
+    } catch (err) {
+      console.error('LOGIN ERROR:', err);
+      showMessage('error', 'حدث خطأ أثناء تسجيل الدخول');
+    } finally {
+      setLoginLoading(false);
     }
-
-    showMessage('success', 'تم تسجيل الدخول بنجاح');
   };
 
   const logout = async () => {
@@ -163,29 +182,35 @@ export default function Home() {
   const updateStatus = async (id: number, status: string) => {
     setBusyId(id);
 
-    const { error } = await supabase.from('orders').update({ status }).eq('id', id);
+    try {
+      const { error } = await supabase.from('orders').update({ status }).eq('id', id);
 
-    setBusyId(null);
+      if (error) {
+        console.error('UPDATE STATUS ERROR:', error);
+        showMessage('error', 'تعذر تحديث حالة الطلب');
+        return;
+      }
 
-    if (error) {
-      console.error('UPDATE STATUS ERROR:', error);
-      showMessage('error', 'تعذر تحديث حالة الطلب');
-      return;
+      showMessage('success', 'تم تحديث حالة الطلب');
+      await fetchOrders();
+    } finally {
+      setBusyId(null);
     }
-
-    showMessage('success', 'تم تحديث حالة الطلب');
-    await fetchOrders();
   };
 
   const createWorker = async () => {
     if (profile?.role !== 'admin' || !user) return;
 
-    if (!workerName || !workerUsername || !workerPassword) {
+    const cleanName = workerName.trim();
+    const cleanUsername = normalizeUsername(workerUsername);
+    const cleanPassword = workerPassword.trim();
+
+    if (!cleanName || !cleanUsername || !cleanPassword) {
       showMessage('error', 'عبّ جميع حقول العامل');
       return;
     }
 
-    if (workerPassword.length < 6) {
+    if (cleanPassword.length < 6) {
       showMessage('error', 'كلمة المرور لازم تكون 6 أحرف أو أكثر');
       return;
     }
@@ -197,18 +222,25 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          full_name: workerName,
-          username: workerUsername,
-          password: workerPassword,
+          full_name: cleanName,
+          username: cleanUsername,
+          email: usernameToEmail(cleanUsername),
+          password: cleanPassword,
           adminUserId: user.id,
         }),
       });
 
-      const result = await res.json();
+      let result: any = null;
+
+      try {
+        result = await res.json();
+      } catch {
+        result = null;
+      }
 
       if (!res.ok) {
-        showMessage('error', result.error || 'فشل إنشاء العامل');
-        setWorkerLoading(false);
+        console.error('CREATE WORKER API ERROR:', result);
+        showMessage('error', result?.error || 'فشل إنشاء العامل');
         return;
       }
 
@@ -216,7 +248,7 @@ export default function Home() {
       setWorkerUsername('');
       setWorkerPassword('');
       showMessage('success', 'تم إنشاء العامل بنجاح');
-      await fetchWorkers();
+      await fetchWorkers(profile);
     } catch (err) {
       console.error('CREATE WORKER ERROR:', err);
       showMessage('error', 'حدث خطأ أثناء إنشاء العامل');
@@ -240,7 +272,11 @@ export default function Home() {
         }
 
         setUser(currentUser);
-        await fetchProfile(currentUser.id);
+        const currentProfile = await fetchProfile(currentUser.id);
+
+        if (currentProfile?.role === 'admin') {
+          await fetchWorkers(currentProfile);
+        }
       } catch (err) {
         console.error('INIT ERROR:', err);
       } finally {
@@ -257,15 +293,24 @@ export default function Home() {
       setUser(currentUser);
 
       if (currentUser) {
-        await fetchProfile(currentUser.id);
+        const currentProfile = await fetchProfile(currentUser.id);
+        if (currentProfile?.role === 'admin') {
+          await fetchWorkers(currentProfile);
+        } else {
+          setWorkers([]);
+        }
       } else {
         setProfile(null);
+        setWorkers([]);
       }
 
       setAuthLoading(false);
     });
 
     return () => {
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+      }
       subscription.unsubscribe();
     };
   }, []);
@@ -291,7 +336,7 @@ export default function Home() {
 
   useEffect(() => {
     if (profile?.role === 'admin') {
-      fetchWorkers();
+      fetchWorkers(profile);
     }
   }, [profile]);
 
@@ -314,11 +359,11 @@ export default function Home() {
     if (!q) return visibleOrders;
 
     return visibleOrders.filter((o) =>
-      o.receipt_number.toString().toLowerCase().includes(q) ||
-      o.customer_name.toLowerCase().includes(q) ||
-      o.phone.toLowerCase().includes(q) ||
-      o.branch.toLowerCase().includes(q) ||
-      (statusLabels[o.status] || o.status).toLowerCase().includes(q)
+      safeText(o.receipt_number).toLowerCase().includes(q) ||
+      safeText(o.customer_name).toLowerCase().includes(q) ||
+      safeText(o.phone).toLowerCase().includes(q) ||
+      safeText(o.branch).toLowerCase().includes(q) ||
+      safeText(statusLabels[o.status] || o.status).toLowerCase().includes(q)
     );
   }, [visibleOrders, search]);
 
@@ -610,11 +655,11 @@ export default function Home() {
                     <td className="px-6 py-4 font-extrabold text-stone-900 md:px-8">
                       #{o.receipt_number}
                     </td>
-                    <td className="px-6 py-4 font-semibold">{o.customer_name}</td>
+                    <td className="px-6 py-4 font-semibold">{o.customer_name || '-'}</td>
                     <td className="px-6 py-4 text-stone-600" dir="ltr">
-                      {o.phone}
+                      {o.phone || '-'}
                     </td>
-                    <td className="px-6 py-4">{o.branch}</td>
+                    <td className="px-6 py-4">{o.branch || '-'}</td>
                     <td className="px-6 py-4">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${
@@ -636,7 +681,11 @@ export default function Home() {
                                 : 'bg-sky-600 hover:bg-sky-700'
                             }`}
                           >
-                            {o.status === 'ready' ? 'تم التجهيز ✔️' : 'تم التجهيز'}
+                            {busyId === o.id && o.status !== 'ready'
+                              ? 'جاري التحديث...'
+                              : o.status === 'ready'
+                              ? 'تم التجهيز ✔️'
+                              : 'تم التجهيز'}
                           </button>
                         )}
 
@@ -647,11 +696,15 @@ export default function Home() {
                             o.status === 'closed'
                               ? 'cursor-not-allowed bg-stone-400'
                               : o.status !== 'ready'
-                                ? 'cursor-not-allowed bg-stone-300'
-                                : 'bg-emerald-600 hover:bg-emerald-700'
+                              ? 'cursor-not-allowed bg-stone-300'
+                              : 'bg-emerald-600 hover:bg-emerald-700'
                           }`}
                         >
-                          {o.status === 'closed' ? 'تم التسليم ✔️' : 'تم التسليم'}
+                          {busyId === o.id && o.status === 'ready'
+                            ? 'جاري التحديث...'
+                            : o.status === 'closed'
+                            ? 'تم التسليم ✔️'
+                            : 'تم التسليم'}
                         </button>
                       </div>
                     </td>
