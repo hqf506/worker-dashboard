@@ -352,7 +352,6 @@ export default function Home() {
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const fetchingOrdersRef = useRef(false);
-  const ordersChannelRef = useRef<any>(null);
 
   useEffect(() => {
     return () => {
@@ -579,11 +578,6 @@ export default function Home() {
   };
 
   const logout = async () => {
-    if (ordersChannelRef.current) {
-      await supabase.removeChannel(ordersChannelRef.current);
-      ordersChannelRef.current = null;
-    }
-
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
@@ -916,27 +910,16 @@ export default function Home() {
 
     fetchOrders(true, profile);
 
-    if (ordersChannelRef.current) {
-      supabase.removeChannel(ordersChannelRef.current);
-      ordersChannelRef.current = null;
-    }
+    if (!autoRefresh) return;
 
-    const channel = supabase
-      .channel(`orders-channel-${user.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, async () => {
-        if (!autoRefresh) return;
-        if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-        await fetchOrders(true, profile);
-      })
-      .subscribe();
-
-    ordersChannelRef.current = channel;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchOrders(true, profile);
+      }
+    }, 10000);
 
     return () => {
-      if (ordersChannelRef.current) {
-        supabase.removeChannel(ordersChannelRef.current);
-        ordersChannelRef.current = null;
-      }
+      window.clearInterval(interval);
     };
   }, [user?.id, profile?.id, profile?.branch, profile?.role, autoRefresh]);
 
