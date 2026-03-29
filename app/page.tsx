@@ -22,7 +22,7 @@ type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
 type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
-type PageView = 'orders' | 'workers' | 'create-worker';
+type PageView = 'orders' | 'workers' | 'create-worker' | 'worker-action';
 
 type Profile = {
   id: string;
@@ -137,6 +137,21 @@ const translations = {
     email: 'الإيميل',
     languageOutside: 'اللغة',
     actionExecuted: 'تم تنفيذ الإجراء بنجاح',
+    continueAction: 'متابعة',
+    backToWorkers: 'الرجوع لقائمة العمال',
+    workerActionTitle: 'تنفيذ إجراء العامل',
+    workerActionDesc: 'اختر الإجراء من القائمة ثم أكمل البيانات هنا بشكل مرتب.',
+    workerInfo: 'بيانات العامل',
+    currentRole: 'الصلاحية الحالية',
+    currentLanguage: 'اللغة الحالية',
+    currentBranch: 'الفرع الحالي',
+    confirmPassword: 'تأكيد كلمة المرور',
+    confirmPasswordEmpty: 'أدخل تأكيد كلمة المرور',
+    confirmPasswordMismatch: 'كلمتا المرور غير متطابقتين',
+    openActionPage: 'فتح الإجراء',
+    noWorkerSelected: 'لم يتم تحديد عامل',
+    deleteWarning: 'سيتم حذف المستخدم نهائيًا بعد التنفيذ.',
+    actionSelectionHint: 'اختر الإجراء من القائمة ثم اضغط متابعة.',
   },
   en: {
     loading: 'Loading...',
@@ -239,6 +254,21 @@ const translations = {
     email: 'Email',
     languageOutside: 'Language',
     actionExecuted: 'Action completed successfully',
+    continueAction: 'Continue',
+    backToWorkers: 'Back to workers',
+    workerActionTitle: 'Worker action',
+    workerActionDesc: 'Choose the action from the list, then complete its fields here in a clean layout.',
+    workerInfo: 'Worker info',
+    currentRole: 'Current role',
+    currentLanguage: 'Current language',
+    currentBranch: 'Current branch',
+    confirmPassword: 'Confirm password',
+    confirmPasswordEmpty: 'Enter password confirmation',
+    confirmPasswordMismatch: 'Passwords do not match',
+    openActionPage: 'Open action',
+    noWorkerSelected: 'No worker selected',
+    deleteWarning: 'This will permanently delete the user after execution.',
+    actionSelectionHint: 'Choose an action from the list, then press continue.',
   },
 } as const;
 
@@ -359,10 +389,12 @@ export default function Home() {
   const [workerPassword, setWorkerPassword] = useState('');
 
   const [resetPasswordMap, setResetPasswordMap] = useState<Record<string, string>>({});
+  const [confirmPasswordMap, setConfirmPasswordMap] = useState<Record<string, string>>({});
   const [workerRoleMap, setWorkerRoleMap] = useState<Record<string, Role>>({});
   const [workerLanguageMap, setWorkerLanguageMap] = useState<Record<string, Language>>({});
   const [workerBranchMap, setWorkerBranchMap] = useState<Record<string, string>>({});
   const [workerActionMap, setWorkerActionMap] = useState<Record<string, WorkerAction>>({});
+  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
 
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -467,6 +499,23 @@ export default function Home() {
 
   const getEffectiveWorkerRole = (worker: Profile) => workerRoleMap[worker.id] || worker.role;
   const canUseAllBranches = (worker: Profile) => getEffectiveWorkerRole(worker) === 'admin';
+
+  const selectedWorker = useMemo(
+    () => workers.find((worker) => worker.id === selectedWorkerId) || null,
+    [workers, selectedWorkerId]
+  );
+
+  const openWorkerActionPage = (worker: Profile) => {
+    const action = workerActionMap[worker.id] || '';
+
+    if (!action) {
+      showMessage('error', t.selectActionFirst);
+      return;
+    }
+
+    setSelectedWorkerId(worker.id);
+    setPageView('worker-action');
+  };
 
   const hydrateWorkerMaps = (list: Profile[]) => {
     const nextRoleMap: Record<string, Role> = {};
@@ -725,9 +774,20 @@ export default function Home() {
     if (profile?.role !== 'admin' || !user) return;
 
     const newPassword = (resetPasswordMap[worker.id] || '').trim();
+    const confirmPassword = (confirmPasswordMap[worker.id] || '').trim();
 
     if (!newPassword) {
       showMessage('error', `${t.resetPasswordEmpty} ${worker.full_name}`);
+      return;
+    }
+
+    if (!confirmPassword) {
+      showMessage('error', t.confirmPasswordEmpty);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showMessage('error', t.confirmPasswordMismatch);
       return;
     }
 
@@ -760,6 +820,7 @@ export default function Home() {
       }
 
       setResetPasswordMap((prev) => ({ ...prev, [worker.id]: '' }));
+      setConfirmPasswordMap((prev) => ({ ...prev, [worker.id]: '' }));
       showActionSuccess(t.resetPasswordSuccess);
     } catch {
       showMessage('error', t.resetPasswordError);
@@ -892,6 +953,15 @@ export default function Home() {
     if (action === 'change-role') return await changeWorkerRole(worker);
     if (action === 'save-settings') return await saveWorkerSettings(worker);
     if (action === 'delete-user') return await deleteWorker(worker);
+  };
+
+  const executeSelectedWorkerAction = async () => {
+    if (!selectedWorker) {
+      showMessage('error', t.noWorkerSelected);
+      return;
+    }
+
+    await runWorkerAction(selectedWorker);
   };
 
   useEffect(() => {
@@ -1385,108 +1455,32 @@ export default function Home() {
               <>
                 <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
                   <h3 className="text-lg font-extrabold text-stone-900">{t.currentWorkers}</h3>
-                  <p className="mt-1 text-sm text-stone-500">
-                    {isArabic ? 'هنا تقدر تطلع على جميع المستخدمين وتعدل صلاحياتهم وبياناتهم.' : 'Manage all users, roles, and settings from here.'}
-                  </p>
+                  <p className="mt-1 text-sm text-stone-500">{t.actionSelectionHint}</p>
                 </div>
 
                 <div className="grid gap-3 px-4 pb-4 pt-4 sm:px-6 sm:pb-6 md:hidden">
-              {workers.length === 0 && (
-                <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
-                  {t.noWorkers}
-                </div>
-              )}
-
-              {workers.map((w) => {
-                const isExecuting =
-                  resettingWorkerId === w.id ||
-                  changingRoleId === w.id ||
-                  savingWorkerId === w.id ||
-                  deletingWorkerId === w.id;
-
-                return (
-                  <div key={w.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
-                    <div className="mb-3">
-                      <div className="text-lg font-extrabold text-stone-900">{w.full_name || '-'}</div>
-                      <div className="mt-1 text-sm text-stone-600">{w.username || w.email}</div>
-                      <div className="text-xs text-stone-400 break-all">{w.email}</div>
+                  {workers.length === 0 && (
+                    <div className="rounded-3xl bg-stone-50 px-4 py-8 text-center text-stone-500">
+                      {t.noWorkers}
                     </div>
+                  )}
 
-                    <div className="grid gap-3">
-                      <div>
-                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.role}</label>
-                        <select
-                          value={workerRoleMap[w.id] || w.role}
-                          onChange={(e) =>
-                            setWorkerRoleMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value as Role,
-                            }))
-                          }
-                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                        >
-                          <option value="worker">{t.worker}</option>
-                          <option value="admin">{t.admin}</option>
-                        </select>
+                  {workers.map((w) => (
+                    <div key={w.id} className="rounded-3xl border border-stone-200 bg-white p-4 shadow-sm">
+                      <div className="mb-3">
+                        <div className="text-lg font-extrabold text-stone-900">{w.full_name || '-'}</div>
+                        <div className="mt-1 text-sm text-stone-600">{w.username || w.email}</div>
+                        <div className="text-xs text-stone-400 break-all">{w.email}</div>
                       </div>
 
-                      <div>
-                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.language}</label>
-                        <select
-                          value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
-                          onChange={(e) =>
-                            setWorkerLanguageMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value as Language,
-                            }))
-                          }
-                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                        >
-                          <option value="ar">{t.arabic}</option>
-                          <option value="en">{t.english}</option>
-                        </select>
-                      </div>
+                      <div className="grid gap-3">
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
+                          <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
+                        </div>
 
-                      <div>
-                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.branch}</label>
-                        <select
-                          value={workerBranchMap[w.id] ?? w.branch ?? ''}
-                          onChange={(e) =>
-                            setWorkerBranchMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value,
-                            }))
-                          }
-                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                        >
-                          {canUseAllBranches(w) && <option value="">{t.allBranches}</option>}
-                          {BRANCH_OPTIONS.map((branchOption) => (
-                            <option key={branchOption.value} value={branchOption.value}>
-                              {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.newPassword}</label>
-                        <input
-                          type="password"
-                          value={resetPasswordMap[w.id] || ''}
-                          onChange={(e) =>
-                            setResetPasswordMap((prev) => ({
-                              ...prev,
-                              [w.id]: e.target.value,
-                            }))
-                          }
-                          placeholder={t.newPassword}
-                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-xs font-bold text-stone-500">{t.actions}</label>
-                        <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <div>
+                          <label className="mb-2 block text-xs font-bold text-stone-500">{t.actions}</label>
                           <select
                             value={workerActionMap[w.id] || ''}
                             onChange={(e) =>
@@ -1503,120 +1497,42 @@ export default function Home() {
                             <option value="save-settings">{t.saveSettingsAction}</option>
                             <option value="delete-user">{t.deleteUserAction}</option>
                           </select>
-
-                          <button
-                            onClick={() => runWorkerAction(w)}
-                            disabled={isExecuting}
-                            className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm disabled:opacity-60"
-                          >
-                            {isExecuting ? t.executing : t.execute}
-                          </button>
                         </div>
+
+                        <button
+                          onClick={() => openWorkerActionPage(w)}
+                          className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
+                        >
+                          {t.continueAction}
+                        </button>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
 
-            <div className="hidden overflow-x-auto md:block">
-              <table className={cx("min-w-full", isArabic ? "text-right" : "text-left")}>
-                <thead className="bg-stone-50/90 text-sm text-stone-600">
-                  <tr>
-                    <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
-                    <th className="px-6 py-4 font-bold">{t.userName}</th>
-                    <th className="px-6 py-4 font-bold">{t.role}</th>
-                    <th className="px-6 py-4 font-bold">{t.language}</th>
-                    <th className="px-6 py-4 font-bold">{t.branch}</th>
-                    <th className="px-6 py-4 font-bold">{t.newPassword}</th>
-                    <th className="px-6 py-4 font-bold md:px-8">{t.actions}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
-                  {workers.map((w) => {
-                    const isExecuting =
-                      resettingWorkerId === w.id ||
-                      changingRoleId === w.id ||
-                      savingWorkerId === w.id ||
-                      deletingWorkerId === w.id;
-
-                    return (
-                      <tr key={w.id} className="transition hover:bg-stone-50/70">
-                        <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
-                        <td className="px-6 py-4 text-stone-600">
-                          <div>{w.username || w.email}</div>
-                          <div className="text-xs text-stone-400">{w.email}</div>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <select
-                            value={workerRoleMap[w.id] || w.role}
-                            onChange={(e) =>
-                              setWorkerRoleMap((prev) => ({
-                                ...prev,
-                                [w.id]: e.target.value as Role,
-                              }))
-                            }
-                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
-                          >
-                            <option value="worker">{t.worker}</option>
-                            <option value="admin">{t.admin}</option>
-                          </select>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <select
-                            value={workerLanguageMap[w.id] || (w.language === 'en' ? 'en' : 'ar')}
-                            onChange={(e) =>
-                              setWorkerLanguageMap((prev) => ({
-                                ...prev,
-                                [w.id]: e.target.value as Language,
-                              }))
-                            }
-                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm"
-                          >
-                            <option value="ar">{t.arabic}</option>
-                            <option value="en">{t.english}</option>
-                          </select>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <select
-                            value={workerBranchMap[w.id] ?? w.branch ?? ''}
-                            onChange={(e) =>
-                              setWorkerBranchMap((prev) => ({
-                                ...prev,
-                                [w.id]: e.target.value,
-                              }))
-                            }
-                            className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[170px]"
-                          >
-                            {canUseAllBranches(w) && <option value="">{t.allBranches}</option>}
-                            {BRANCH_OPTIONS.map((branchOption) => (
-                              <option key={branchOption.value} value={branchOption.value}>
-                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <input
-                            type="password"
-                            value={resetPasswordMap[w.id] || ''}
-                            onChange={(e) =>
-                              setResetPasswordMap((prev) => ({
-                                ...prev,
-                                [w.id]: e.target.value,
-                              }))
-                            }
-                            placeholder={t.newPassword}
-                            className="min-w-[180px] rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
-                          />
-                        </td>
-
-                        <td className="px-6 py-4 md:px-8">
-                          <div className="flex flex-wrap items-center gap-2">
+                <div className="hidden overflow-x-auto md:block">
+                  <table className={cx('min-w-full', isArabic ? 'text-right' : 'text-left')}>
+                    <thead className="bg-stone-50/90 text-sm text-stone-600">
+                      <tr>
+                        <th className="px-6 py-4 font-bold md:px-8">{t.name}</th>
+                        <th className="px-6 py-4 font-bold">{t.userName}</th>
+                        <th className="px-6 py-4 font-bold">{t.role}</th>
+                        <th className="px-6 py-4 font-bold">{t.branch}</th>
+                        <th className="px-6 py-4 font-bold">{t.actions}</th>
+                        <th className="px-6 py-4 font-bold md:px-8">{t.execute}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
+                      {workers.map((w) => (
+                        <tr key={w.id} className="transition hover:bg-stone-50/70">
+                          <td className="px-6 py-4 font-bold md:px-8">{w.full_name || '-'}</td>
+                          <td className="px-6 py-4 text-stone-600">
+                            <div>{w.username || w.email}</div>
+                            <div className="text-xs text-stone-400">{w.email}</div>
+                          </td>
+                          <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
+                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
+                          <td className="px-6 py-4">
                             <select
                               value={workerActionMap[w.id] || ''}
                               onChange={(e) =>
@@ -1625,7 +1541,7 @@ export default function Home() {
                                   [w.id]: e.target.value as WorkerAction,
                                 }))
                               }
-                              className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[190px]"
+                              className="rounded-2xl border border-stone-200 bg-white px-4 py-2 text-sm min-w-[220px]"
                             >
                               <option value="">{t.selectAction}</option>
                               <option value="reset-password">{t.resetPasswordAction}</option>
@@ -1633,27 +1549,204 @@ export default function Home() {
                               <option value="save-settings">{t.saveSettingsAction}</option>
                               <option value="delete-user">{t.deleteUserAction}</option>
                             </select>
-
+                          </td>
+                          <td className="px-6 py-4 md:px-8">
                             <button
-                              onClick={() => runWorkerAction(w)}
-                              disabled={isExecuting}
-                              className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                              onClick={() => openWorkerActionPage(w)}
+                              className="rounded-2xl bg-stone-900 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800"
                             >
-                              {isExecuting ? t.executing : t.execute}
+                              {t.continueAction}
                             </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
 
-              {workers.length === 0 && (
-                <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
-              )}
-            </div>
+                  {workers.length === 0 && (
+                    <div className="px-6 py-10 text-center text-stone-500">{t.noWorkers}</div>
+                  )}
+                </div>
               </>
+            )}
+
+            {pageView === 'worker-action' && (
+              <>
+                <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-extrabold text-stone-900">{t.workerActionTitle}</h3>
+                      <p className="mt-1 text-sm text-stone-500">{t.workerActionDesc}</p>
+                    </div>
+                    <button
+                      onClick={() => setPageView('workers')}
+                      className="rounded-2xl bg-stone-100 px-4 py-2 text-sm font-bold text-stone-700 ring-1 ring-stone-200 transition hover:bg-stone-200"
+                    >
+                      {t.backToWorkers}
+                    </button>
+                  </div>
+                </div>
+
+                {!selectedWorker ? (
+                  <div className="px-4 py-10 text-center text-stone-500 sm:px-6 md:px-8">{t.noWorkerSelected}</div>
+                ) : (
+                  <div className="grid gap-4 px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-[320px_minmax(0,1fr)] md:px-8">
+                    <div className="rounded-3xl border border-stone-200 bg-stone-50 p-5">
+                      <div className="text-sm font-bold text-stone-500">{t.workerInfo}</div>
+                      <div className="mt-3 text-xl font-extrabold text-stone-900">{selectedWorker.full_name || '-'}</div>
+                      <div className="mt-1 text-sm text-stone-600">{selectedWorker.username || selectedWorker.email}</div>
+                      <div className="mt-1 text-xs text-stone-400 break-all">{selectedWorker.email}</div>
+
+                      <div className="mt-5 space-y-3 text-sm">
+                        <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
+                        <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
+                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
+                      </div>
+                    </div>
+
+                    <div className="rounded-3xl border border-stone-200 bg-white p-5 shadow-sm">
+                      <div>
+                        <label className="mb-2 block text-sm font-bold text-stone-700">{t.actions}</label>
+                        <select
+                          value={workerActionMap[selectedWorker.id] || ''}
+                          onChange={(e) =>
+                            setWorkerActionMap((prev) => ({
+                              ...prev,
+                              [selectedWorker.id]: e.target.value as WorkerAction,
+                            }))
+                          }
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                        >
+                          <option value="">{t.selectAction}</option>
+                          <option value="reset-password">{t.resetPasswordAction}</option>
+                          <option value="change-role">{t.changeRoleAction}</option>
+                          <option value="save-settings">{t.saveSettingsAction}</option>
+                          <option value="delete-user">{t.deleteUserAction}</option>
+                        </select>
+                      </div>
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'reset-password' && (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.newPassword}</label>
+                            <input
+                              type="password"
+                              value={resetPasswordMap[selectedWorker.id] || ''}
+                              onChange={(e) =>
+                                setResetPasswordMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value,
+                                }))
+                              }
+                              placeholder={t.newPassword}
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.confirmPassword}</label>
+                            <input
+                              type="password"
+                              value={confirmPasswordMap[selectedWorker.id] || ''}
+                              onChange={(e) =>
+                                setConfirmPasswordMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value,
+                                }))
+                              }
+                              placeholder={t.confirmPassword}
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-role' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.role}</label>
+                          <select
+                            value={workerRoleMap[selectedWorker.id] || selectedWorker.role}
+                            onChange={(e) =>
+                              setWorkerRoleMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value as Role,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            <option value="worker">{t.worker}</option>
+                            <option value="admin">{t.admin}</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'save-settings' && (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
+                            <select
+                              value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
+                              onChange={(e) =>
+                                setWorkerLanguageMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value as Language,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                            >
+                              <option value="ar">{t.arabic}</option>
+                              <option value="en">{t.english}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
+                            <select
+                              value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
+                              onChange={(e) =>
+                                setWorkerBranchMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                            >
+                              {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
+                              {BRANCH_OPTIONS.map((branchOption) => (
+                                <option key={branchOption.value} value={branchOption.value}>
+                                  {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      {(workerActionMap[selectedWorker.id] || '') === 'delete-user' && (
+                        <div className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 ring-1 ring-rose-200">
+                          {t.deleteWarning}
+                        </div>
+                      )}
+
+                      <div className="mt-5 flex justify-end">
+                        <button
+                          onClick={executeSelectedWorkerAction}
+                          disabled={
+                            resettingWorkerId === selectedWorker.id ||
+                            changingRoleId === selectedWorker.id ||
+                            savingWorkerId === selectedWorker.id ||
+                            deletingWorkerId === selectedWorker.id
+                          }
+                          className="rounded-2xl bg-stone-900 px-5 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {resettingWorkerId === selectedWorker.id || changingRoleId === selectedWorker.id || savingWorkerId === selectedWorker.id || deletingWorkerId === selectedWorker.id
+                            ? t.executing
+                            : t.execute}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
             )}
           </section>
         )}
