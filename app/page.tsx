@@ -375,7 +375,7 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [bootLoading, setBootLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [profileResolved, setProfileResolved] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
@@ -548,7 +548,7 @@ export default function Home() {
             .select('*')
             .eq('id', userId)
             .maybeSingle(),
-        15000
+        8000
       );
 
       const { data, error } = result as any;
@@ -572,7 +572,7 @@ export default function Home() {
     if (showLoader) setProfileLoading(true);
 
     try {
-      const delays = useRetry ? [0, 400, 900, 1600] : [0, 500];
+      const delays = useRetry ? [0, 400, 900] : [0];
 
       for (let i = 0; i < delays.length; i++) {
         if (delays[i] > 0) await sleep(delays[i]);
@@ -580,10 +580,7 @@ export default function Home() {
         const { data, error } = await fetchProfileOnce(userId);
 
         if (data) {
-          if (mountedRef.current) {
-            setProfile(data);
-            setProfileResolved(true);
-          }
+          setProfile(data);
           return data;
         }
 
@@ -592,13 +589,10 @@ export default function Home() {
         }
       }
 
-      if (mountedRef.current) {
-        setProfile(null);
-        setProfileResolved(true);
-      }
+      setProfile(null);
       return null;
     } finally {
-      if (showLoader && mountedRef.current) setProfileLoading(false);
+      if (showLoader) setProfileLoading(false);
     }
   };
 
@@ -713,7 +707,6 @@ export default function Home() {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
-    setProfileResolved(false);
     setOrders([]);
     setWorkers([]);
     showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
@@ -1025,35 +1018,11 @@ export default function Home() {
     const init = async () => {
       try {
         const {
-          data: { user: currentUser },
-        } = await withTimeout(() => supabase.auth.getUser(), 8000);
-
-        if (!currentUser) {
-          if (!mountedRef.current) return;
-          setUser(null);
-          setProfile(null);
-          setProfileResolved(false);
-          setProfileLoading(false);
-          setAuthLoading(false);
-          setBootLoading(false);
-          return;
-        }
+          data: { session },
+        } = await withTimeout(() => supabase.auth.getSession(), 10000);
 
         if (!mountedRef.current) return;
-        setUser(currentUser);
-        const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
-
-        if (currentProfile?.role === 'admin') {
-          await fetchWorkers(currentProfile);
-        } else if (mountedRef.current) {
-          setWorkers([]);
-        }
-
-        if (currentProfile) {
-          await fetchOrders(true, currentProfile);
-        } else if (mountedRef.current) {
-          setProfileResolved(true);
-        }
+        setUser(session?.user ?? null);
       } catch (error) {
         console.error('INIT AUTH ERROR:', error);
       } finally {
@@ -1068,62 +1037,26 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
         return;
       }
 
-      const currentUser = session?.user ?? null;
-
-      if (event === 'SIGNED_OUT') {
-        if (!mountedRef.current) return;
-        setUser(null);
-        setProfile(null);
-        setProfileResolved(false);
-        setProfileLoading(false);
-        setWorkers([]);
-        setOrders([]);
-        setAuthLoading(false);
-        setBootLoading(false);
-        return;
-      }
-
-      if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') {
-        return;
-      }
-
       if (!mountedRef.current) return;
+
+      const currentUser = session?.user ?? null;
       setUser(currentUser);
 
       if (!currentUser) {
         setProfile(null);
-        setProfileResolved(false);
+        setProfileChecked(true);
+        setProfileLoading(false);
         setWorkers([]);
         setOrders([]);
-        setAuthLoading(false);
-        setBootLoading(false);
-        return;
       }
 
-      const useRetry = event === 'SIGNED_IN';
-      const showLoader = event === 'SIGNED_IN';
-
-      const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry, showLoader);
-
-      if (currentProfile?.role === 'admin') {
-        await fetchWorkers(currentProfile);
-      } else if (mountedRef.current) {
-        setWorkers([]);
-      }
-
-      if (currentProfile) {
-        await fetchOrders(true, currentProfile);
-      }
-
-      if (mountedRef.current) {
-        setAuthLoading(false);
-        setBootLoading(false);
-      }
+      setAuthLoading(false);
+      setBootLoading(false);
     });
 
     return () => {
@@ -1131,6 +1064,52 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadProfileData = async () => {
+      if (!user?.id) {
+        if (!mountedRef.current || cancelled) return;
+        setProfile(null);
+        setProfileChecked(true);
+        setProfileLoading(false);
+        setWorkers([]);
+        setOrders([]);
+        return;
+      }
+
+      setProfileLoading(true);
+      setProfileChecked(false);
+
+      const currentProfile = await fetchProfileWithRetry(user.id, true, false);
+
+      if (!mountedRef.current || cancelled) return;
+
+      setProfileLoading(false);
+      setProfileChecked(true);
+
+      if (!currentProfile) {
+        setWorkers([]);
+        setOrders([]);
+        return;
+      }
+
+      if (currentProfile.role === 'admin') {
+        await fetchWorkers(currentProfile);
+      } else if (mountedRef.current) {
+        setWorkers([]);
+      }
+
+      await fetchOrders(true, currentProfile);
+    };
+
+    loadProfileData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id || !profile?.id) return;
@@ -1162,7 +1141,6 @@ export default function Home() {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user?.id, profile?.id, profile?.branch, profile?.role]);
-
 
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -1214,14 +1192,14 @@ export default function Home() {
     { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
   ];
 
-  if (bootLoading || authLoading || profileLoading) {
+  if (bootLoading || authLoading || (profileLoading && !profile)) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
         <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {profileLoading ? t.loadingProfile : t.loading}
+          {user && !profileChecked ? t.loadingProfile : t.loading}
         </div>
       </main>
     );
@@ -1309,7 +1287,7 @@ export default function Home() {
     );
   }
 
-  if (!profile && profileResolved) {
+  if (user && profileChecked && !profile) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1324,20 +1302,6 @@ export default function Home() {
           >
             {t.logout}
           </button>
-        </div>
-      </main>
-    );
-  }
-
-
-  if (!profile) {
-    return (
-      <main
-        dir={isArabic ? 'rtl' : 'ltr'}
-        className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
-      >
-        <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {t.loadingProfile}
         </div>
       </main>
     );
@@ -1477,7 +1441,7 @@ export default function Home() {
           </section>
         )}
 
-        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
