@@ -272,8 +272,6 @@ const translations = {
   },
 } as const;
 
-type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
-
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const usernameToEmail = (username: string) => {
@@ -311,7 +309,6 @@ const applyDocumentLanguage = (lang: Language) => {
 const BRANCH_OPTIONS = [
   { value: 'فرع الصحافة', labelAr: 'فرع الصحافة', labelEn: 'Sahafa Branch' },
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
-  { value: 'all', labelAr: 'الجميع', labelEn: 'All Branches' },
 ] as const;
 
 function cx(...classes: Array<string | false | undefined>) {
@@ -464,7 +461,7 @@ export default function Home() {
 
   const currentLang: Language = uiLanguage;
 
-  const t: TranslationMap = translations[currentLang];
+  const t = translations[currentLang];
   const isArabic = currentLang === 'ar';
 
   const statusLabels = useMemo<Record<string, string>>(
@@ -608,11 +605,7 @@ export default function Home() {
       const activeProfile = profileOverride ?? profile;
       let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
-      if (
-        activeProfile?.role === 'worker' &&
-        activeProfile?.branch &&
-        activeProfile.branch !== 'all'
-      ) {
+      if (activeProfile?.role === 'worker' && activeProfile?.branch) {
         query = query.eq('branch', activeProfile.branch);
       }
 
@@ -1450,7 +1443,7 @@ export default function Home() {
           </section>
         )}
 
-        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
@@ -1520,7 +1513,7 @@ export default function Home() {
                       <div className="grid gap-3">
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
-                          <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
+                          <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
                         </div>
 
                         <div>
@@ -1575,7 +1568,7 @@ export default function Home() {
                             <div className="text-xs text-stone-400">{w.email}</div>
                           </td>
                           <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
-                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
+                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
                           <td className="px-6 py-4">
                             <select
                               value={workerActionMap[w.id] || ''}
@@ -1644,7 +1637,7 @@ export default function Home() {
                       <div className="mt-5 space-y-3 text-sm">
                         <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
                         <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
-                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
+                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
                       </div>
                     </div>
 
