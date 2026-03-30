@@ -1194,7 +1194,7 @@ export default function Home() {
     { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
   ];
 
-  if (bootLoading || authLoading || (profileLoading && !profile)) {
+  if (bootLoading || authLoading) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
