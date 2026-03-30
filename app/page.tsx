@@ -272,6 +272,8 @@ const translations = {
   },
 } as const;
 
+type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
+
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const usernameToEmail = (username: string) => {
@@ -462,7 +464,7 @@ export default function Home() {
 
   const currentLang: Language = uiLanguage;
 
-  const t: typeof translations.ar = translations[currentLang];
+  const t: TranslationMap = translations[currentLang];
   const isArabic = currentLang === 'ar';
 
   const statusLabels = useMemo<Record<string, string>>(
