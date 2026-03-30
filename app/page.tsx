@@ -20,7 +20,7 @@ type Order = {
 
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
-type WorkerAction = '' | 'reset-password' | 'change-role' | 'change-branch' | 'delete-user';
+type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
 type PageView = 'orders' | 'workers' | 'create-worker' | 'worker-action';
 
@@ -82,7 +82,7 @@ const translations = {
     changingPassword: 'جاري التغيير...',
     changeRole: 'تغيير الصلاحية',
     changingRole: 'جاري التغيير...',
-    saveBranchLang: 'تغيير الفرع',
+    saveBranchLang: 'حفظ اللغة والفرع',
     saving: 'جاري الحفظ...',
     deleteUser: 'حذف اليوزر',
     deleting: 'جاري الحذف...',
@@ -111,8 +111,8 @@ const translations = {
     resetPasswordError: 'فشل إعادة تعيين كلمة المرور',
     roleSaved: 'تم تحديث الصلاحية بنجاح',
     roleSaveError: 'تعذر تحديث الصلاحية',
-    branchLangSaved: 'تم تغيير الفرع بنجاح',
-    branchLangError: 'تعذر تغيير الفرع',
+    branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
+    branchLangError: 'تعذر حفظ اللغة والفرع',
     chooseBranchForWorker: 'اختر فرعًا للعامل قبل الحفظ',
     userDeleted: 'تم حذف المستخدم بنجاح',
     userDeleteError: 'تعذر حذف المستخدم',
@@ -199,7 +199,7 @@ const translations = {
     changingPassword: 'Changing...',
     changeRole: 'Change Role',
     changingRole: 'Changing...',
-    saveBranchLang: 'Change Branch',
+    saveBranchLang: 'Save Branch & Language',
     saving: 'Saving...',
     deleteUser: 'Delete User',
     deleting: 'Deleting...',
@@ -228,8 +228,8 @@ const translations = {
     resetPasswordError: 'Failed to reset password',
     roleSaved: 'Role updated successfully',
     roleSaveError: 'Unable to update role',
-    branchLangSaved: 'Branch changed successfully',
-    branchLangError: 'Unable to change branch',
+    branchLangSaved: 'Branch and language saved successfully',
+    branchLangError: 'Unable to save branch and language',
     chooseBranchForWorker: 'Select a branch for the worker before saving',
     userDeleted: 'User deleted successfully',
     userDeleteError: 'Unable to delete user',
@@ -272,8 +272,6 @@ const translations = {
   },
 } as const;
 
-type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
-
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const usernameToEmail = (username: string) => {
@@ -293,6 +291,8 @@ const withTimeout = async <T,>(run: () => Promise<T>, ms = 8000): Promise<T> => 
 };
 
 const UI_LANGUAGE_STORAGE_KEY = 'worker-dashboard-ui-language';
+const ORDER_STATUS_WEBHOOK_URL = (process.env.NEXT_PUBLIC_N8N_ORDER_STATUS_WEBHOOK || '').trim();
+
 
 const getStoredLanguage = (): Language => {
   if (typeof window === 'undefined') return 'ar';
@@ -309,7 +309,6 @@ const applyDocumentLanguage = (lang: Language) => {
 const BRANCH_OPTIONS = [
   { value: 'فرع الصحافة', labelAr: 'فرع الصحافة', labelEn: 'Sahafa Branch' },
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
-  { value: 'all', labelAr: 'الجميع', labelEn: 'All Branches' },
 ] as const;
 
 function cx(...classes: Array<string | false | undefined>) {
@@ -606,11 +605,7 @@ export default function Home() {
       const activeProfile = profileOverride ?? profile;
       let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
-      if (
-        activeProfile?.role === 'worker' &&
-        activeProfile?.branch &&
-        activeProfile.branch !== 'all'
-      ) {
+      if (activeProfile?.role === 'worker' && activeProfile?.branch) {
         query = query.eq('branch', activeProfile.branch);
       }
 
@@ -704,15 +699,47 @@ export default function Home() {
     showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
   };
 
+  const sendOrderStatusWebhook = async (order: Order, status: string) => {
+    if (!ORDER_STATUS_WEBHOOK_URL) return;
+    if (!order.phone) return;
+    if (status !== 'ready' && status !== 'closed') return;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 5000);
+
+      await fetch(ORDER_STATUS_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receipt_number: order.receipt_number,
+          phone: order.phone,
+          branch: order.branch || '',
+          status,
+        }),
+        signal: controller.signal,
+      });
+
+      window.clearTimeout(timeoutId);
+    } catch (error) {
+      console.error('ORDER STATUS WEBHOOK ERROR:', error);
+    }
+  };
+
   const updateStatus = async (id: number, status: string) => {
     setBusyId(id);
 
     try {
+      const currentOrder = orders.find((order) => order.id === id) || null;
       const { error } = await supabase.from('orders').update({ status }).eq('id', id);
 
       if (error) {
         showMessage('error', t.updateStatusError);
         return;
+      }
+
+      if (currentOrder) {
+        await sendOrderStatusWebhook(currentOrder, status);
       }
 
       showActionSuccess(t.updateStatusSuccess);
@@ -838,12 +865,12 @@ export default function Home() {
     }
   };
 
-  const saveWorkerBranch = async (worker: Profile) => {
+  const saveWorkerSettings = async (worker: Profile) => {
     if (profile?.role !== 'admin' || !user) return;
 
     const nextRole = getEffectiveWorkerRole(worker);
-    const rawBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
-    const nextBranch = rawBranch === 'all' ? 'all' : rawBranch;
+    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
+    const nextBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
 
     if (nextRole === 'worker' && !nextBranch) {
       showMessage('error', t.chooseBranchForWorker);
@@ -858,6 +885,7 @@ export default function Home() {
           await supabase
             .from('profiles')
             .update({
+              language: nextLanguage,
               branch: nextBranch,
             })
             .eq('id', worker.id),
@@ -872,7 +900,7 @@ export default function Home() {
       showActionSuccess(t.branchLangSaved);
       await fetchWorkers(profile);
     } catch (error) {
-      console.error('SAVE WORKER BRANCH ERROR:', error);
+      console.error('SAVE WORKER SETTINGS ERROR:', error);
       showMessage('error', t.branchLangError);
     } finally {
       setSavingWorkerId(null);
@@ -960,7 +988,7 @@ export default function Home() {
 
     if (action === 'reset-password') return await resetWorkerPassword(worker);
     if (action === 'change-role') return await changeWorkerRole(worker);
-    if (action === 'change-branch') return await saveWorkerBranch(worker);
+    if (action === 'save-settings') return await saveWorkerSettings(worker);
     if (action === 'delete-user') return await deleteWorker(worker);
   };
 
@@ -1415,7 +1443,7 @@ export default function Home() {
           </section>
         )}
 
-        {profile.role === 'admin' && ['create-worker', 'workers', 'worker-action'].includes(pageView) && (
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
@@ -1485,14 +1513,7 @@ export default function Home() {
                       <div className="grid gap-3">
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
-                          <InfoItem
-                            label={t.branch}
-                            value={
-                              (workerBranchMap[w.id] ?? w.branch ?? '') === 'all'
-                                ? t.allBranches
-                                : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'
-                            }
-                          />
+                          <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
                         </div>
 
                         <div>
@@ -1510,7 +1531,7 @@ export default function Home() {
                             <option value="">{t.selectAction}</option>
                             <option value="reset-password">{t.resetPasswordAction}</option>
                             <option value="change-role">{t.changeRoleAction}</option>
-                            <option value="change-branch">{t.saveBranchLang}</option>
+                            <option value="save-settings">{t.saveSettingsAction}</option>
                             <option value="delete-user">{t.deleteUserAction}</option>
                           </select>
                         </div>
@@ -1547,7 +1568,7 @@ export default function Home() {
                             <div className="text-xs text-stone-400">{w.email}</div>
                           </td>
                           <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
-                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
+                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
                           <td className="px-6 py-4">
                             <select
                               value={workerActionMap[w.id] || ''}
@@ -1562,7 +1583,7 @@ export default function Home() {
                               <option value="">{t.selectAction}</option>
                               <option value="reset-password">{t.resetPasswordAction}</option>
                               <option value="change-role">{t.changeRoleAction}</option>
-                              <option value="change-branch">{t.saveBranchLang}</option>
+                              <option value="save-settings">{t.saveSettingsAction}</option>
                               <option value="delete-user">{t.deleteUserAction}</option>
                             </select>
                           </td>
@@ -1616,7 +1637,7 @@ export default function Home() {
                       <div className="mt-5 space-y-3 text-sm">
                         <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
                         <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
-                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
+                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
                       </div>
                     </div>
 
@@ -1636,7 +1657,7 @@ export default function Home() {
                           <option value="">{t.selectAction}</option>
                           <option value="reset-password">{t.resetPasswordAction}</option>
                           <option value="change-role">{t.changeRoleAction}</option>
-                          <option value="change-branch">{t.saveBranchLang}</option>
+                          <option value="save-settings">{t.saveSettingsAction}</option>
                           <option value="delete-user">{t.deleteUserAction}</option>
                         </select>
                       </div>
@@ -1695,25 +1716,44 @@ export default function Home() {
                         </div>
                       )}
 
-                      {(workerActionMap[selectedWorker.id] || '') === 'change-branch' && (
-                        <div className="mt-4">
-                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
-                          <select
-                            value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
-                            onChange={(e) =>
-                              setWorkerBranchMap((prev) => ({
-                                ...prev,
-                                [selectedWorker.id]: e.target.value,
-                              }))
-                            }
-                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                          >
-                            {BRANCH_OPTIONS.map((branchOption) => (
-                              <option key={branchOption.value} value={branchOption.value}>
-                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                              </option>
-                            ))}
-                          </select>
+                      {(workerActionMap[selectedWorker.id] || '') === 'save-settings' && (
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
+                            <select
+                              value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
+                              onChange={(e) =>
+                                setWorkerLanguageMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value as Language,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                            >
+                              <option value="ar">{t.arabic}</option>
+                              <option value="en">{t.english}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
+                            <select
+                              value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
+                              onChange={(e) =>
+                                setWorkerBranchMap((prev) => ({
+                                  ...prev,
+                                  [selectedWorker.id]: e.target.value,
+                                }))
+                              }
+                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                            >
+                              {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
+                              {BRANCH_OPTIONS.map((branchOption) => (
+                                <option key={branchOption.value} value={branchOption.value}>
+                                  {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       )}
 
