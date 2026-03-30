@@ -20,7 +20,7 @@ type Order = {
 
 type Role = 'admin' | 'worker';
 type Language = 'ar' | 'en';
-type WorkerAction = '' | 'reset-password' | 'change-role' | 'save-settings' | 'delete-user';
+type WorkerAction = '' | 'reset-password' | 'change-role' | 'change-branch' | 'delete-user';
 type OrderTab = 'all' | 'new' | 'ready';
 type PageView = 'orders' | 'workers' | 'create-worker' | 'worker-action';
 
@@ -82,7 +82,7 @@ const translations = {
     changingPassword: 'جاري التغيير...',
     changeRole: 'تغيير الصلاحية',
     changingRole: 'جاري التغيير...',
-    saveBranchLang: 'حفظ اللغة والفرع',
+    saveBranchLang: 'تغيير الفرع',
     saving: 'جاري الحفظ...',
     deleteUser: 'حذف اليوزر',
     deleting: 'جاري الحذف...',
@@ -111,8 +111,8 @@ const translations = {
     resetPasswordError: 'فشل إعادة تعيين كلمة المرور',
     roleSaved: 'تم تحديث الصلاحية بنجاح',
     roleSaveError: 'تعذر تحديث الصلاحية',
-    branchLangSaved: 'تم حفظ اللغة والفرع بنجاح',
-    branchLangError: 'تعذر حفظ اللغة والفرع',
+    branchLangSaved: 'تم تغيير الفرع بنجاح',
+    branchLangError: 'تعذر تغيير الفرع',
     chooseBranchForWorker: 'اختر فرعًا للعامل قبل الحفظ',
     userDeleted: 'تم حذف المستخدم بنجاح',
     userDeleteError: 'تعذر حذف المستخدم',
@@ -199,7 +199,7 @@ const translations = {
     changingPassword: 'Changing...',
     changeRole: 'Change Role',
     changingRole: 'Changing...',
-    saveBranchLang: 'Save Branch & Language',
+    saveBranchLang: 'Change Branch',
     saving: 'Saving...',
     deleteUser: 'Delete User',
     deleting: 'Deleting...',
@@ -228,8 +228,8 @@ const translations = {
     resetPasswordError: 'Failed to reset password',
     roleSaved: 'Role updated successfully',
     roleSaveError: 'Unable to update role',
-    branchLangSaved: 'Branch and language saved successfully',
-    branchLangError: 'Unable to save branch and language',
+    branchLangSaved: 'Branch changed successfully',
+    branchLangError: 'Unable to change branch',
     chooseBranchForWorker: 'Select a branch for the worker before saving',
     userDeleted: 'User deleted successfully',
     userDeleteError: 'Unable to delete user',
@@ -272,6 +272,8 @@ const translations = {
   },
 } as const;
 
+type TranslationMap = { [K in keyof (typeof translations)['ar']]: string };
+
 const normalizeUsername = (value: string) => value.trim().toLowerCase();
 
 const usernameToEmail = (username: string) => {
@@ -281,7 +283,7 @@ const usernameToEmail = (username: string) => {
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const withTimeout = async <T,>(run: () => Promise<T>, ms = 15000): Promise<T> => {
+const withTimeout = async <T,>(run: () => Promise<T>, ms = 8000): Promise<T> => {
   return await Promise.race([
     run(),
     new Promise<T>((_, reject) =>
@@ -291,8 +293,6 @@ const withTimeout = async <T,>(run: () => Promise<T>, ms = 15000): Promise<T> =>
 };
 
 const UI_LANGUAGE_STORAGE_KEY = 'worker-dashboard-ui-language';
-const ORDER_STATUS_WEBHOOK_URL = (process.env.NEXT_PUBLIC_N8N_ORDER_STATUS_WEBHOOK || '').trim();
-
 
 const getStoredLanguage = (): Language => {
   if (typeof window === 'undefined') return 'ar';
@@ -309,6 +309,7 @@ const applyDocumentLanguage = (lang: Language) => {
 const BRANCH_OPTIONS = [
   { value: 'فرع الصحافة', labelAr: 'فرع الصحافة', labelEn: 'Sahafa Branch' },
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
+  { value: 'all', labelAr: 'الجميع', labelEn: 'All Branches' },
 ] as const;
 
 function cx(...classes: Array<string | false | undefined>) {
@@ -375,7 +376,6 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [bootLoading, setBootLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
-  const [profileChecked, setProfileChecked] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
@@ -604,11 +604,7 @@ export default function Home() {
 
     try {
       const activeProfile = profileOverride ?? profile;
-      let query = supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(100);
+      let query = supabase.from('orders').select('*').order('id', { ascending: false });
 
       if (
         activeProfile?.role === 'worker' &&
@@ -618,13 +614,11 @@ export default function Home() {
         query = query.eq('branch', activeProfile.branch);
       }
 
-      const result = await withTimeout(async () => await query, 15000);
+      const result = await withTimeout(async () => await query, 8000);
       const { data, error } = result as any;
 
       if (error) {
-        if (!silent) {
-          showMessage('error', t.updateStatusError);
-        }
+        showMessage('error', t.updateStatusError);
         return;
       }
 
@@ -633,9 +627,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error('ORDERS FETCH TIMEOUT/ERROR:', error);
-      if (!silent) {
-        showMessage('error', isArabic ? 'انتهت مهلة تحميل الطلبات' : 'Orders request timed out');
-      }
+      showMessage('error', isArabic ? 'انتهت مهلة تحميل الطلبات' : 'Orders request timed out');
     } finally {
       fetchingOrdersRef.current = false;
       if (!silent && mountedRef.current) setRefreshingOrders(false);
@@ -712,47 +704,15 @@ export default function Home() {
     showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
   };
 
-  const sendOrderStatusWebhook = async (order: Order, status: string) => {
-    if (!ORDER_STATUS_WEBHOOK_URL) return;
-    if (!order.phone) return;
-    if (status !== 'ready' && status !== 'closed') return;
-
-    try {
-      const controller = new AbortController();
-      const timeoutId = window.setTimeout(() => controller.abort(), 5000);
-
-      await fetch(ORDER_STATUS_WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          receipt_number: order.receipt_number,
-          phone: order.phone,
-          branch: order.branch || '',
-          status,
-        }),
-        signal: controller.signal,
-      });
-
-      window.clearTimeout(timeoutId);
-    } catch (error) {
-      console.error('ORDER STATUS WEBHOOK ERROR:', error);
-    }
-  };
-
   const updateStatus = async (id: number, status: string) => {
     setBusyId(id);
 
     try {
-      const currentOrder = orders.find((order) => order.id === id) || null;
       const { error } = await supabase.from('orders').update({ status }).eq('id', id);
 
       if (error) {
         showMessage('error', t.updateStatusError);
         return;
-      }
-
-      if (currentOrder) {
-        await sendOrderStatusWebhook(currentOrder, status);
       }
 
       showActionSuccess(t.updateStatusSuccess);
@@ -878,12 +838,12 @@ export default function Home() {
     }
   };
 
-  const saveWorkerSettings = async (worker: Profile) => {
+  const saveWorkerBranch = async (worker: Profile) => {
     if (profile?.role !== 'admin' || !user) return;
 
     const nextRole = getEffectiveWorkerRole(worker);
-    const nextLanguage = workerLanguageMap[worker.id] || (worker.language === 'en' ? 'en' : 'ar');
-    const nextBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
+    const rawBranch = (workerBranchMap[worker.id] ?? worker.branch ?? '').trim();
+    const nextBranch = rawBranch === 'all' ? 'all' : rawBranch;
 
     if (nextRole === 'worker' && !nextBranch) {
       showMessage('error', t.chooseBranchForWorker);
@@ -898,7 +858,6 @@ export default function Home() {
           await supabase
             .from('profiles')
             .update({
-              language: nextLanguage,
               branch: nextBranch,
             })
             .eq('id', worker.id),
@@ -913,7 +872,7 @@ export default function Home() {
       showActionSuccess(t.branchLangSaved);
       await fetchWorkers(profile);
     } catch (error) {
-      console.error('SAVE WORKER SETTINGS ERROR:', error);
+      console.error('SAVE WORKER BRANCH ERROR:', error);
       showMessage('error', t.branchLangError);
     } finally {
       setSavingWorkerId(null);
@@ -1001,7 +960,7 @@ export default function Home() {
 
     if (action === 'reset-password') return await resetWorkerPassword(worker);
     if (action === 'change-role') return await changeWorkerRole(worker);
-    if (action === 'save-settings') return await saveWorkerSettings(worker);
+    if (action === 'change-branch') return await saveWorkerBranch(worker);
     if (action === 'delete-user') return await deleteWorker(worker);
   };
 
@@ -1018,11 +977,32 @@ export default function Home() {
     const init = async () => {
       try {
         const {
-          data: { session },
-        } = await withTimeout(() => supabase.auth.getSession(), 10000);
+          data: { user: currentUser },
+        } = await withTimeout(() => supabase.auth.getUser(), 8000);
+
+        if (!currentUser) {
+          if (!mountedRef.current) return;
+          setUser(null);
+          setProfile(null);
+          setProfileLoading(false);
+          setAuthLoading(false);
+          setBootLoading(false);
+          return;
+        }
 
         if (!mountedRef.current) return;
-        setUser(session?.user ?? null);
+        setUser(currentUser);
+        const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
+
+        if (currentProfile?.role === 'admin') {
+          await fetchWorkers(currentProfile);
+        } else if (mountedRef.current) {
+          setWorkers([]);
+        }
+
+        if (currentProfile) {
+          await fetchOrders(true, currentProfile);
+        }
       } catch (error) {
         console.error('INIT AUTH ERROR:', error);
       } finally {
@@ -1037,26 +1017,60 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
         return;
       }
 
-      if (!mountedRef.current) return;
-
       const currentUser = session?.user ?? null;
+
+      if (event === 'SIGNED_OUT') {
+        if (!mountedRef.current) return;
+        setUser(null);
+        setProfile(null);
+        setProfileLoading(false);
+        setWorkers([]);
+        setOrders([]);
+        setAuthLoading(false);
+        setBootLoading(false);
+        return;
+      }
+
+      if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') {
+        return;
+      }
+
+      if (!mountedRef.current) return;
       setUser(currentUser);
 
       if (!currentUser) {
         setProfile(null);
-        setProfileChecked(true);
-        setProfileLoading(false);
         setWorkers([]);
         setOrders([]);
+        setAuthLoading(false);
+        setBootLoading(false);
+        return;
       }
 
-      setAuthLoading(false);
-      setBootLoading(false);
+      const useRetry = event === 'SIGNED_IN';
+      const showLoader = event === 'SIGNED_IN';
+
+      const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry, showLoader);
+
+      if (currentProfile?.role === 'admin') {
+        await fetchWorkers(currentProfile);
+      } else if (mountedRef.current) {
+        setWorkers([]);
+      }
+
+      if (currentProfile) {
+        await fetchOrders(true, currentProfile);
+      }
+
+      if (mountedRef.current) {
+        setAuthLoading(false);
+        setBootLoading(false);
+      }
     });
 
     return () => {
@@ -1064,52 +1078,6 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadProfileData = async () => {
-      if (!user?.id) {
-        if (!mountedRef.current || cancelled) return;
-        setProfile(null);
-        setProfileChecked(true);
-        setProfileLoading(false);
-        setWorkers([]);
-        setOrders([]);
-        return;
-      }
-
-      setProfileLoading(true);
-      setProfileChecked(false);
-
-      const currentProfile = await fetchProfileWithRetry(user.id, true, false);
-
-      if (!mountedRef.current || cancelled) return;
-
-      setProfileLoading(false);
-      setProfileChecked(true);
-
-      if (!currentProfile) {
-        setWorkers([]);
-        setOrders([]);
-        return;
-      }
-
-      if (currentProfile.role === 'admin') {
-        await fetchWorkers(currentProfile);
-      } else if (mountedRef.current) {
-        setWorkers([]);
-      }
-
-      await fetchOrders(true, currentProfile);
-    };
-
-    loadProfileData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id || !profile?.id) return;
@@ -1122,7 +1090,7 @@ export default function Home() {
       if (document.visibilityState === 'visible') {
         fetchOrders(true, profile);
       }
-    }, 30000);
+    }, 10000);
 
     return () => {
       window.clearInterval(interval);
@@ -1141,6 +1109,12 @@ export default function Home() {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user?.id, profile?.id, profile?.branch, profile?.role]);
+
+  useEffect(() => {
+    if (profile?.role === 'admin') {
+      fetchWorkers(profile);
+    }
+  }, [profile]);
 
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -1199,7 +1173,7 @@ export default function Home() {
         className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
       >
         <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
-          {user && !profileChecked ? t.loadingProfile : t.loading}
+          {profileLoading ? t.loadingProfile : t.loading}
         </div>
       </main>
     );
@@ -1287,7 +1261,7 @@ export default function Home() {
     );
   }
 
-  if (user && profileChecked && !profile) {
+  if (!profile) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1306,6 +1280,9 @@ export default function Home() {
       </main>
     );
   }
+
+
+  const activeProfile = profile;
 
   return (
     <main
@@ -1350,12 +1327,12 @@ export default function Home() {
 
               <div className="min-w-0">
                 <div className="mb-2 inline-flex rounded-full bg-stone-900 px-3 py-1 text-[11px] font-bold text-white shadow-sm sm:text-xs">
-                  {profile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
+                  {activeProfile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
                 </div>
                 <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl lg:text-4xl">
-                  {profile.role === 'admin' ? t.titleAdmin : t.titleWorker}
+                  {activeProfile.role === 'admin' ? t.titleAdmin : t.titleWorker}
                 </h1>
-                <p className="mt-1 text-sm text-stone-500 sm:text-base">{profile.full_name || user.email}</p>
+                <p className="mt-1 text-sm text-stone-500 sm:text-base">{activeProfile.full_name || user.email}</p>
               </div>
             </div>
 
@@ -1387,7 +1364,7 @@ export default function Home() {
           </div>
         </section>
 
-        {profile.role === 'admin' && (
+        {activeProfile.role === 'admin' && (
           <section className="rounded-[28px] border border-white/60 bg-white/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px] sm:p-6">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
@@ -1441,7 +1418,7 @@ export default function Home() {
           </section>
         )}
 
-        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers') && (
+        {activeProfile.role === 'admin' && ['create-worker', 'workers', 'worker-action'].includes(pageView) && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
@@ -1511,7 +1488,14 @@ export default function Home() {
                       <div className="grid gap-3">
                         <div className="grid grid-cols-2 gap-3 text-sm">
                           <InfoItem label={t.role} value={getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker} />
-                          <InfoItem label={t.branch} value={(workerBranchMap[w.id] ?? w.branch ?? '') || '-'} />
+                          <InfoItem
+                            label={t.branch}
+                            value={
+                              (workerBranchMap[w.id] ?? w.branch ?? '') === 'all'
+                                ? t.allBranches
+                                : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'
+                            }
+                          />
                         </div>
 
                         <div>
@@ -1529,7 +1513,7 @@ export default function Home() {
                             <option value="">{t.selectAction}</option>
                             <option value="reset-password">{t.resetPasswordAction}</option>
                             <option value="change-role">{t.changeRoleAction}</option>
-                            <option value="save-settings">{t.saveSettingsAction}</option>
+                            <option value="change-branch">{t.saveBranchLang}</option>
                             <option value="delete-user">{t.deleteUserAction}</option>
                           </select>
                         </div>
@@ -1566,7 +1550,7 @@ export default function Home() {
                             <div className="text-xs text-stone-400">{w.email}</div>
                           </td>
                           <td className="px-6 py-4">{getEffectiveWorkerRole(w) === 'admin' ? t.admin : t.worker}</td>
-                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
+                          <td className="px-6 py-4">{(workerBranchMap[w.id] ?? w.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[w.id] ?? w.branch ?? '') || '-'}</td>
                           <td className="px-6 py-4">
                             <select
                               value={workerActionMap[w.id] || ''}
@@ -1581,7 +1565,7 @@ export default function Home() {
                               <option value="">{t.selectAction}</option>
                               <option value="reset-password">{t.resetPasswordAction}</option>
                               <option value="change-role">{t.changeRoleAction}</option>
-                              <option value="save-settings">{t.saveSettingsAction}</option>
+                              <option value="change-branch">{t.saveBranchLang}</option>
                               <option value="delete-user">{t.deleteUserAction}</option>
                             </select>
                           </td>
@@ -1635,7 +1619,7 @@ export default function Home() {
                       <div className="mt-5 space-y-3 text-sm">
                         <InfoItem label={t.currentRole} value={getEffectiveWorkerRole(selectedWorker) === 'admin' ? t.admin : t.worker} />
                         <InfoItem label={t.currentLanguage} value={(workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')) === 'en' ? t.english : t.arabic} />
-                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
+                        <InfoItem label={t.currentBranch} value={(workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') === 'all' ? t.allBranches : (workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? '') || '-'} />
                       </div>
                     </div>
 
@@ -1655,7 +1639,7 @@ export default function Home() {
                           <option value="">{t.selectAction}</option>
                           <option value="reset-password">{t.resetPasswordAction}</option>
                           <option value="change-role">{t.changeRoleAction}</option>
-                          <option value="save-settings">{t.saveSettingsAction}</option>
+                          <option value="change-branch">{t.saveBranchLang}</option>
                           <option value="delete-user">{t.deleteUserAction}</option>
                         </select>
                       </div>
@@ -1714,44 +1698,25 @@ export default function Home() {
                         </div>
                       )}
 
-                      {(workerActionMap[selectedWorker.id] || '') === 'save-settings' && (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.language}</label>
-                            <select
-                              value={workerLanguageMap[selectedWorker.id] || (selectedWorker.language === 'en' ? 'en' : 'ar')}
-                              onChange={(e) =>
-                                setWorkerLanguageMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value as Language,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              <option value="ar">{t.arabic}</option>
-                              <option value="en">{t.english}</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
-                            <select
-                              value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
-                              onChange={(e) =>
-                                setWorkerBranchMap((prev) => ({
-                                  ...prev,
-                                  [selectedWorker.id]: e.target.value,
-                                }))
-                              }
-                              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
-                            >
-                              {canUseAllBranches(selectedWorker) && <option value="">{t.allBranches}</option>}
-                              {BRANCH_OPTIONS.map((branchOption) => (
-                                <option key={branchOption.value} value={branchOption.value}>
-                                  {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                      {(workerActionMap[selectedWorker.id] || '') === 'change-branch' && (
+                        <div className="mt-4">
+                          <label className="mb-2 block text-sm font-bold text-stone-700">{t.branch}</label>
+                          <select
+                            value={workerBranchMap[selectedWorker.id] ?? selectedWorker.branch ?? ''}
+                            onChange={(e) =>
+                              setWorkerBranchMap((prev) => ({
+                                ...prev,
+                                [selectedWorker.id]: e.target.value,
+                              }))
+                            }
+                            className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm"
+                          >
+                            {BRANCH_OPTIONS.map((branchOption) => (
+                              <option key={branchOption.value} value={branchOption.value}>
+                                {currentLang === 'ar' ? branchOption.labelAr : branchOption.labelEn}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                       )}
 
@@ -1785,7 +1750,7 @@ export default function Home() {
           </section>
         )}
 
-        {((profile.role === 'worker') || (profile.role === 'admin' && pageView === 'orders')) && (
+        {((activeProfile.role === 'worker') || (activeProfile.role === 'admin' && pageView === 'orders')) && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1803,7 +1768,7 @@ export default function Home() {
                   className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                 />
 
-                {profile.role === 'worker' && (
+                {activeProfile.role === 'worker' && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="grid grid-cols-3 gap-2">
                       {workerTabs.map((tab) => (
@@ -1840,7 +1805,7 @@ export default function Home() {
                 )}
 
 
-                {profile.role === 'admin' && (
+                {activeProfile.role === 'admin' && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => setShowClosedOrders((prev) => !prev)}
@@ -1897,7 +1862,7 @@ export default function Home() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {o.status === 'closed' && profile.role === 'admin' ? (
+                  {o.status === 'closed' && activeProfile.role === 'admin' ? (
                     <button
                       onClick={() => updateStatus(o.id, 'ready')}
                       disabled={busyId === o.id}
@@ -1998,7 +1963,7 @@ export default function Home() {
                     </td>
                     <td className="px-6 py-4 md:px-8">
                       <div className="flex flex-wrap gap-2">
-                        {o.status === 'closed' && profile.role === 'admin' ? (
+                        {o.status === 'closed' && activeProfile.role === 'admin' ? (
                           <button
                             onClick={() => updateStatus(o.id, 'ready')}
                             disabled={busyId === o.id}
