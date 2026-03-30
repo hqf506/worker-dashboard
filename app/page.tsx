@@ -283,7 +283,7 @@ const usernameToEmail = (username: string) => {
 
 const safeText = (value: string | null | undefined) => (value ?? '').toString();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const withTimeout = async <T,>(run: () => Promise<T>, ms = 8000): Promise<T> => {
+const withTimeout = async <T,>(run: () => Promise<T>, ms = 15000): Promise<T> => {
   return await Promise.race([
     run(),
     new Promise<T>((_, reject) =>
@@ -376,6 +376,7 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(true);
   const [bootLoading, setBootLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileChecked, setProfileChecked] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [workerLoading, setWorkerLoading] = useState(false);
   const [refreshingOrders, setRefreshingOrders] = useState(false);
@@ -404,6 +405,7 @@ export default function Home() {
   const messageTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const fetchingOrdersRef = useRef(false);
+  const authInitializedRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -548,7 +550,7 @@ export default function Home() {
             .select('*')
             .eq('id', userId)
             .maybeSingle(),
-        8000
+        15000
       );
 
       const { data, error } = result as any;
@@ -581,6 +583,7 @@ export default function Home() {
 
         if (data) {
           setProfile(data);
+          setProfileChecked(true);
           return data;
         }
 
@@ -590,6 +593,7 @@ export default function Home() {
       }
 
       setProfile(null);
+      setProfileChecked(true);
       return null;
     } finally {
       if (showLoader) setProfileLoading(false);
@@ -604,7 +608,11 @@ export default function Home() {
 
     try {
       const activeProfile = profileOverride ?? profile;
-      let query = supabase.from('orders').select('*').order('id', { ascending: false });
+      let query = supabase
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(100);
 
       if (
         activeProfile?.role === 'worker' &&
@@ -614,11 +622,11 @@ export default function Home() {
         query = query.eq('branch', activeProfile.branch);
       }
 
-      const result = await withTimeout(async () => await query, 8000);
+      const result = await withTimeout(async () => await query, 15000);
       const { data, error } = result as any;
 
       if (error) {
-        showMessage('error', t.updateStatusError);
+        if (!silent) showMessage('error', t.updateStatusError);
         return;
       }
 
@@ -627,7 +635,9 @@ export default function Home() {
       }
     } catch (error) {
       console.error('ORDERS FETCH TIMEOUT/ERROR:', error);
-      showMessage('error', isArabic ? 'انتهت مهلة تحميل الطلبات' : 'Orders request timed out');
+      if (!silent) {
+        showMessage('error', isArabic ? 'انتهت مهلة تحميل الطلبات' : 'Orders request timed out');
+      }
     } finally {
       fetchingOrdersRef.current = false;
       if (!silent && mountedRef.current) setRefreshingOrders(false);
@@ -645,7 +655,7 @@ export default function Home() {
             .from('profiles')
             .select('*')
             .order('created_at', { ascending: false }),
-        8000
+        15000
       );
 
       const { data, error } = result as any;
@@ -974,60 +984,17 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const {
-          data: { user: currentUser },
-        } = await withTimeout(() => supabase.auth.getUser(), 8000);
+    const hydrateForUser = async (
+      currentUser: User | null,
+      options?: { useRetry?: boolean; showLoader?: boolean }
+    ) => {
+      if (!mountedRef.current) return;
 
-        if (!currentUser) {
-          if (!mountedRef.current) return;
-          setUser(null);
-          setProfile(null);
-          setProfileLoading(false);
-          setAuthLoading(false);
-          setBootLoading(false);
-          return;
-        }
+      setUser(currentUser);
 
-        if (!mountedRef.current) return;
-        setUser(currentUser);
-        const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
-
-        if (currentProfile?.role === 'admin') {
-          await fetchWorkers(currentProfile);
-        } else if (mountedRef.current) {
-          setWorkers([]);
-        }
-
-        if (currentProfile) {
-          await fetchOrders(true, currentProfile);
-        }
-      } catch (error) {
-        console.error('INIT AUTH ERROR:', error);
-      } finally {
-        if (mountedRef.current) {
-          setAuthLoading(false);
-          setBootLoading(false);
-        }
-      }
-    };
-
-    init();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY') {
-        return;
-      }
-
-      const currentUser = session?.user ?? null;
-
-      if (event === 'SIGNED_OUT') {
-        if (!mountedRef.current) return;
-        setUser(null);
+      if (!currentUser) {
         setProfile(null);
+        setProfileChecked(true);
         setProfileLoading(false);
         setWorkers([]);
         setOrders([]);
@@ -1036,26 +1003,13 @@ export default function Home() {
         return;
       }
 
-      if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') {
-        return;
-      }
+      setProfileChecked(false);
 
-      if (!mountedRef.current) return;
-      setUser(currentUser);
-
-      if (!currentUser) {
-        setProfile(null);
-        setWorkers([]);
-        setOrders([]);
-        setAuthLoading(false);
-        setBootLoading(false);
-        return;
-      }
-
-      const useRetry = event === 'SIGNED_IN';
-      const showLoader = event === 'SIGNED_IN';
-
-      const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry, showLoader);
+      const currentProfile = await fetchProfileWithRetry(
+        currentUser.id,
+        options?.useRetry ?? false,
+        options?.showLoader ?? false
+      );
 
       if (currentProfile?.role === 'admin') {
         await fetchWorkers(currentProfile);
@@ -1071,6 +1025,50 @@ export default function Home() {
         setAuthLoading(false);
         setBootLoading(false);
       }
+    };
+
+    const init = async () => {
+      try {
+        const {
+          data: { session },
+        } = await withTimeout(() => supabase.auth.getSession(), 15000);
+
+        authInitializedRef.current = true;
+        await hydrateForUser(session?.user ?? null, { useRetry: false, showLoader: false });
+      } catch (error) {
+        console.error('INIT AUTH ERROR:', error);
+        if (mountedRef.current) {
+          setProfile(null);
+          setProfileChecked(true);
+          setAuthLoading(false);
+          setBootLoading(false);
+        }
+      }
+    };
+
+    init();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!authInitializedRef.current) return;
+      if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED' || event === 'PASSWORD_RECOVERY' || event === 'INITIAL_SESSION') {
+        return;
+      }
+
+      if (event === 'SIGNED_OUT') {
+        await hydrateForUser(null);
+        return;
+      }
+
+      if (event !== 'SIGNED_IN') {
+        return;
+      }
+
+      await hydrateForUser(session?.user ?? null, {
+        useRetry: true,
+        showLoader: true,
+      });
     });
 
     return () => {
@@ -1090,7 +1088,7 @@ export default function Home() {
       if (document.visibilityState === 'visible') {
         fetchOrders(true, profile);
       }
-    }, 10000);
+    }, 30000);
 
     return () => {
       window.clearInterval(interval);
@@ -1109,12 +1107,6 @@ export default function Home() {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [user?.id, profile?.id, profile?.branch, profile?.role]);
-
-  useEffect(() => {
-    if (profile?.role === 'admin') {
-      fetchWorkers(profile);
-    }
-  }, [profile]);
 
   const sortedOrders = useMemo(() => {
     return [...orders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
@@ -1166,7 +1158,7 @@ export default function Home() {
     { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
   ];
 
-  if (bootLoading || authLoading || (profileLoading && !profile)) {
+  if (bootLoading || authLoading || (user && !profileChecked)) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1261,7 +1253,7 @@ export default function Home() {
     );
   }
 
-  if (!profile) {
+  if (!profileChecked || !profile) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1418,7 +1410,8 @@ export default function Home() {
           </section>
         )}
 
-        {activeProfile.role === 'admin' && ['create-worker', 'workers', 'worker-action'].includes(pageView) && (
+        {activeProfile.role === 'admin' &&
+          (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
