@@ -548,7 +548,7 @@ export default function Home() {
             .select('*')
             .eq('id', userId)
             .maybeSingle(),
-        8000
+        15000
       );
 
       const { data, error } = result as any;
@@ -572,7 +572,7 @@ export default function Home() {
     if (showLoader) setProfileLoading(true);
 
     try {
-      const delays = useRetry ? [0, 400, 900] : [0];
+      const delays = useRetry ? [0, 400, 900, 1600] : [0, 500];
 
       for (let i = 0; i < delays.length; i++) {
         if (delays[i] > 0) await sleep(delays[i]);
@@ -580,8 +580,10 @@ export default function Home() {
         const { data, error } = await fetchProfileOnce(userId);
 
         if (data) {
-          setProfile(data);
-          setProfileResolved(true);
+          if (mountedRef.current) {
+            setProfile(data);
+            setProfileResolved(true);
+          }
           return data;
         }
 
@@ -590,11 +592,13 @@ export default function Home() {
         }
       }
 
-      setProfile(null);
-    setProfileResolved(false);
+      if (mountedRef.current) {
+        setProfile(null);
+        setProfileResolved(true);
+      }
       return null;
     } finally {
-      if (showLoader) setProfileLoading(false);
+      if (showLoader && mountedRef.current) setProfileLoading(false);
     }
   };
 
@@ -709,6 +713,7 @@ export default function Home() {
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    setProfileResolved(false);
     setOrders([]);
     setWorkers([]);
     showMessage('success', isArabic ? 'تم تسجيل الخروج' : 'Logged out successfully');
@@ -1036,7 +1041,6 @@ export default function Home() {
 
         if (!mountedRef.current) return;
         setUser(currentUser);
-        setProfileResolved(false);
         const currentProfile = await fetchProfileWithRetry(currentUser.id, false, false);
 
         if (currentProfile?.role === 'admin') {
@@ -1047,6 +1051,8 @@ export default function Home() {
 
         if (currentProfile) {
           await fetchOrders(true, currentProfile);
+        } else if (mountedRef.current) {
+          setProfileResolved(true);
         }
       } catch (error) {
         console.error('INIT AUTH ERROR:', error);
@@ -1082,7 +1088,7 @@ export default function Home() {
         return;
       }
 
-      if (event !== 'SIGNED_IN') {
+      if (event !== 'SIGNED_IN' && event !== 'INITIAL_SESSION') {
         return;
       }
 
@@ -1091,6 +1097,7 @@ export default function Home() {
 
       if (!currentUser) {
         setProfile(null);
+        setProfileResolved(false);
         setWorkers([]);
         setOrders([]);
         setAuthLoading(false);
@@ -1098,9 +1105,8 @@ export default function Home() {
         return;
       }
 
-      setProfileResolved(false);
-      const useRetry = true;
-      const showLoader = true;
+      const useRetry = event === 'SIGNED_IN';
+      const showLoader = event === 'SIGNED_IN';
 
       const currentProfile = await fetchProfileWithRetry(currentUser.id, useRetry, showLoader);
 
@@ -1208,7 +1214,7 @@ export default function Home() {
     { key: 'ready' as const, label: t.readyOrders, count: counts.ready },
   ];
 
-  if (bootLoading || authLoading) {
+  if (bootLoading || authLoading || profileLoading) {
     return (
       <main
         dir={isArabic ? 'rtl' : 'ltr'}
@@ -1323,7 +1329,19 @@ export default function Home() {
     );
   }
 
-  const activeProfile: Profile = profile as Profile;
+
+  if (!profile) {
+    return (
+      <main
+        dir={isArabic ? 'rtl' : 'ltr'}
+        className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top_right,_#f6f1e7,_#f8f7f3_35%,_#efede7_100%)] px-4"
+      >
+        <div className="rounded-[28px] border border-white/60 bg-white/85 px-8 py-10 text-center shadow-[0_20px_60px_rgba(0,0,0,0.08)]">
+          {t.loadingProfile}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main
@@ -1368,12 +1386,12 @@ export default function Home() {
 
               <div className="min-w-0">
                 <div className="mb-2 inline-flex rounded-full bg-stone-900 px-3 py-1 text-[11px] font-bold text-white shadow-sm sm:text-xs">
-                  {activeProfile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
+                  {profile.role === 'admin' ? t.dashboardAdmin : t.dashboardWorker}
                 </div>
                 <h1 className="text-2xl font-extrabold tracking-tight text-stone-900 sm:text-3xl lg:text-4xl">
-                  {activeProfile.role === 'admin' ? t.titleAdmin : t.titleWorker}
+                  {profile.role === 'admin' ? t.titleAdmin : t.titleWorker}
                 </h1>
-                <p className="mt-1 text-sm text-stone-500 sm:text-base">{activeProfile.full_name || user.email}</p>
+                <p className="mt-1 text-sm text-stone-500 sm:text-base">{profile.full_name || user.email}</p>
               </div>
             </div>
 
@@ -1405,7 +1423,7 @@ export default function Home() {
           </div>
         </section>
 
-        {activeProfile.role === 'admin' && (
+        {profile.role === 'admin' && (
           <section className="rounded-[28px] border border-white/60 bg-white/80 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px] sm:p-6">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <button
@@ -1459,7 +1477,7 @@ export default function Home() {
           </section>
         )}
 
-        {activeProfile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
+        {profile.role === 'admin' && (pageView === 'create-worker' || pageView === 'workers' || pageView === 'worker-action') && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
             {pageView === 'create-worker' && (
               <>
@@ -1803,7 +1821,7 @@ export default function Home() {
           </section>
         )}
 
-        {((activeProfile.role === 'worker') || (activeProfile.role === 'admin' && pageView === 'orders')) && (
+        {((profile.role === 'worker') || (profile.role === 'admin' && pageView === 'orders')) && (
           <section className="overflow-hidden rounded-[28px] border border-white/60 bg-white/85 shadow-[0_20px_60px_rgba(0,0,0,0.08)] backdrop-blur sm:rounded-[32px]">
           <div className="border-b border-stone-100 px-4 py-4 sm:px-6 sm:py-5 md:px-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -1821,7 +1839,7 @@ export default function Home() {
                   className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-800 shadow-sm outline-none transition placeholder:text-stone-400 focus:border-stone-400 focus:ring-2 focus:ring-stone-200"
                 />
 
-                {activeProfile.role === 'worker' && (
+                {profile.role === 'worker' && (
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="grid grid-cols-3 gap-2">
                       {workerTabs.map((tab) => (
@@ -1858,7 +1876,7 @@ export default function Home() {
                 )}
 
 
-                {activeProfile.role === 'admin' && (
+                {profile.role === 'admin' && (
                   <div className="flex justify-end">
                     <button
                       onClick={() => setShowClosedOrders((prev) => !prev)}
@@ -1915,7 +1933,7 @@ export default function Home() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {o.status === 'closed' && activeProfile.role === 'admin' ? (
+                  {o.status === 'closed' && profile.role === 'admin' ? (
                     <button
                       onClick={() => updateStatus(o.id, 'ready')}
                       disabled={busyId === o.id}
@@ -2016,7 +2034,7 @@ export default function Home() {
                     </td>
                     <td className="px-6 py-4 md:px-8">
                       <div className="flex flex-wrap gap-2">
-                        {o.status === 'closed' && activeProfile.role === 'admin' ? (
+                        {o.status === 'closed' && profile.role === 'admin' ? (
                           <button
                             onClick={() => updateStatus(o.id, 'ready')}
                             disabled={busyId === o.id}
