@@ -309,8 +309,7 @@ const BRANCH_OPTIONS = [
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
 ] as const;
 
-const WHATSAPP_WEBHOOK_URL =
-  'https://n8n-production-b163.up.railway.app/webhook/order-status';
+const WHATSAPP_WEBHOOK_URL = '/api/send-whatsapp-status';
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
