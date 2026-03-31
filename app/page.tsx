@@ -60,7 +60,7 @@ const translations = {
     showClosedOrders: 'عرض الطلبات المغلقة',
     hideClosedOrders: 'إخفاء الطلبات المغلقة',
     restoreOrder: 'إرجاع الطلب',
-    restoreReady: 'إرجاع إلى تم التجهيز',
+    restoreReady: 'إرجاع إلى جديد',
     refreshOrders: 'تحديث الطلبات',
     refreshing: 'جاري التحديث...',
     addWorker: 'إضافة عامل جديد',
@@ -177,7 +177,7 @@ const translations = {
     showClosedOrders: 'Show Closed Orders',
     hideClosedOrders: 'Hide Closed Orders',
     restoreOrder: 'Restore Order',
-    restoreReady: 'Restore to Ready',
+    restoreReady: 'Restore to New',
     refreshOrders: 'Refresh Orders',
     refreshing: 'Refreshing...',
     addWorker: 'Add New User',
@@ -1908,7 +1908,7 @@ export default function Home() {
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   {o.status === 'closed' && profile.role === 'admin' ? (
                     <button
-                      onClick={() => updateStatus(o.id, 'ready')}
+                      onClick={() => updateStatus(o.id, 'new')}
                       disabled={busyId === o.id}
                       className="col-span-2 rounded-2xl bg-amber-500 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
                     >
@@ -1916,24 +1916,24 @@ export default function Home() {
                     </button>
                   ) : (
                     <>
-                      {o.status !== 'new' && (
+                      {o.status !== 'closed' && (
                         <button
-                         onClick={() => updateStatus(o.id, 'new')}
-                         disabled={busyId === o.id || o.status === 'new'}
-                         className={cx(
-                         'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
-                         o.status === 'new'
-                         ? 'cursor-not-allowed bg-stone-400'
-                         : 'bg-amber-500 hover:bg-amber-600'
-                         )}
->
-                         {busyId === o.id && o.status !== 'new'
-                         ? t.updating
-                         : o.status === 'new'
-                         ? 'تم الإرجاع'
-                         : 'إرجاع إلى جديد'}
-                         </button>
-                         )}
+                          onClick={() => updateStatus(o.id, 'ready')}
+                          disabled={busyId === o.id || o.status === 'ready'}
+                          className={cx(
+                            'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
+                            o.status === 'ready'
+                              ? 'cursor-not-allowed bg-stone-400'
+                              : 'bg-sky-600 hover:bg-sky-700'
+                          )}
+                        >
+                          {busyId === o.id && o.status !== 'ready'
+                            ? t.updating
+                            : o.status === 'ready'
+                            ? `${t.ready} ✔️`
+                            : t.ready}
+                        </button>
+                      )}
 
                       <button
                         onClick={() => updateStatus(o.id, 'closed')}
@@ -2009,7 +2009,7 @@ export default function Home() {
                       <div className="flex flex-wrap gap-2">
                         {o.status === 'closed' && profile.role === 'admin' ? (
                           <button
-                            onClick={() => updateStatus(o.id, 'ready')}
+                            onClick={() => updateStatus(o.id, 'new')}
                             disabled={busyId === o.id}
                             className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
                           >
