@@ -310,7 +310,7 @@ const BRANCH_OPTIONS = [
 ] as const;
 
 const WHATSAPP_WEBHOOK_URL =
-  'https://elytroid-concetta-unpulleyed.ngrok-free.dev/webhook/order-status';
+  'https://n8n-production-b163.up.railway.app/webhook/order-status';
 
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
