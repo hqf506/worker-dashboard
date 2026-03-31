@@ -1918,21 +1918,21 @@ export default function Home() {
                     <>
                       {o.status !== 'closed' && (
                         <button
-                          onClick={() => updateStatus(o.id, 'ready')}
-                          disabled={busyId === o.id || o.status === 'ready'}
-                          className={cx(
-                            'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
-                            o.status === 'ready'
-                              ? 'cursor-not-allowed bg-stone-400'
-                              : 'bg-sky-600 hover:bg-sky-700'
-                          )}
-                        >
-                          {busyId === o.id && o.status !== 'ready'
-                            ? t.updating
-                            : o.status === 'ready'
-                            ? `${t.ready} ✔️`
-                            : t.ready}
-                        </button>
+                         onClick={() => updateStatus(o.id, 'new')}
+                         disabled={busyId === o.id || o.status === 'new'}
+                         className={cx(
+                         'rounded-2xl px-4 py-3 text-base font-extrabold text-white shadow-sm transition',
+                         o.status === 'new'
+                         ? 'cursor-not-allowed bg-stone-400'
+                         : 'bg-amber-500 hover:bg-amber-600'
+                         )}
+>
+  {busyId === o.id && o.status !== 'new'
+    ? t.updating
+    : o.status === 'new'
+    ? 'تم الإرجاع'
+    : 'إرجاع إلى جديد'}
+</button>
                       )}
 
                       <button
