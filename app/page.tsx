@@ -1916,7 +1916,7 @@ export default function Home() {
                     </button>
                   ) : (
                     <>
-                      {o.status !== 'closed' && (
+                      {o.status !== 'new' && (
                         <button
                          onClick={() => updateStatus(o.id, 'new')}
                          disabled={busyId === o.id || o.status === 'new'}
@@ -1927,13 +1927,13 @@ export default function Home() {
                          : 'bg-amber-500 hover:bg-amber-600'
                          )}
 >
-  {busyId === o.id && o.status !== 'new'
-    ? t.updating
-    : o.status === 'new'
-    ? 'تم الإرجاع'
-    : 'إرجاع إلى جديد'}
-</button>
-                      )}
+                         {busyId === o.id && o.status !== 'new'
+                         ? t.updating
+                         : o.status === 'new'
+                         ? 'تم الإرجاع'
+                         : 'إرجاع إلى جديد'}
+                         </button>
+                         )}
 
                       <button
                         onClick={() => updateStatus(o.id, 'closed')}
