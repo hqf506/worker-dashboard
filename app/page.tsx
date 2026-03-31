@@ -126,6 +126,9 @@ const translations = {
     newStatus: 'جديد',
     readyStatus: 'تم التجهيز',
     closedStatus: 'تم التسليم',
+    cancelledStatus: 'ملغي',
+    cancelOrder: 'إلغاء الطلب',
+    cancelOrderConfirm: 'هل أنت متأكد من إلغاء هذا الطلب؟',
     selectAction: 'اختر الإجراء',
     execute: 'تنفيذ',
     executing: 'جاري التنفيذ...',
@@ -243,6 +246,9 @@ const translations = {
     newStatus: 'New',
     readyStatus: 'Ready',
     closedStatus: 'Delivered',
+    cancelledStatus: 'Cancelled',
+    cancelOrder: 'Cancel Order',
+    cancelOrderConfirm: 'Are you sure you want to cancel this order?',
     selectAction: 'Select Action',
     execute: 'Execute',
     executing: 'Executing...',
@@ -470,14 +476,16 @@ export default function Home() {
       new: t.newStatus,
       ready: t.readyStatus,
       closed: t.closedStatus,
+      cancelled: t.cancelledStatus,
     }),
-    [t.newStatus, t.readyStatus, t.closedStatus]
+    [t.newStatus, t.readyStatus, t.closedStatus, t.cancelledStatus]
   );
 
   const statusStyles: Record<string, string> = {
     new: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
     ready: 'bg-sky-50 text-sky-700 ring-1 ring-sky-200',
     closed: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
+    cancelled: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
   };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -704,6 +712,8 @@ export default function Home() {
   };
 
   const updateStatus = async (id: number, status: string) => {
+    if (status === 'cancelled' && !confirm(t.cancelOrderConfirm)) return;
+
     setBusyId(id);
 
     try {
@@ -1145,7 +1155,7 @@ export default function Home() {
       return sortedOrders;
     }
 
-    return sortedOrders.filter((o) => o.status !== 'closed');
+    return sortedOrders.filter((o) => o.status !== 'closed' && o.status !== 'cancelled');
   }, [sortedOrders, profile?.role, showClosedOrders]);
 
   const counts = useMemo(() => {
@@ -1155,6 +1165,7 @@ export default function Home() {
       new: openOrders.filter((o) => o.status === 'new').length,
       ready: openOrders.filter((o) => o.status === 'ready').length,
       closed: sortedOrders.filter((o) => o.status === 'closed').length,
+      cancelled: sortedOrders.filter((o) => o.status === 'cancelled').length,
     };
   }, [sortedOrders]);
 
@@ -1411,7 +1422,7 @@ export default function Home() {
                 <div className="text-2xl">📦</div>
                 <div className="mt-2 text-base font-extrabold">{t.currentOrders}</div>
                 <div className={cx('mt-1 text-sm', pageView === 'orders' ? 'text-white/80' : 'text-stone-500')}>
-                  {isArabic ? `المفتوحة ${counts.total} / المغلقة ${counts.closed}` : `Open ${counts.total} / Closed ${counts.closed}`}
+                  {isArabic ? `المفتوحة ${counts.total} / المغلقة ${counts.closed} / الملغية ${counts.cancelled}` : `Open ${counts.total} / Closed ${counts.closed} / Cancelled ${counts.cancelled}`}
                 </div>
               </button>
 
@@ -1874,7 +1885,11 @@ export default function Home() {
                 key={o.id}
                 className={cx(
                   'rounded-3xl border bg-white p-4 shadow-sm',
-                  o.status === 'new' ? 'border-amber-200 ring-2 ring-amber-100' : 'border-stone-200'
+                  o.status === 'new'
+                    ? 'border-amber-200 ring-2 ring-amber-100'
+                    : o.status === 'cancelled'
+                    ? 'border-rose-200 ring-2 ring-rose-100'
+                    : 'border-stone-200'
                 )}
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -1906,7 +1921,7 @@ export default function Home() {
                 </div>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
-                  {o.status === 'closed' && profile.role === 'admin' ? (
+                  {(o.status === 'closed' || o.status === 'cancelled') && profile.role === 'admin' ? (
                     <button
                       onClick={() => updateStatus(o.id, 'new')}
                       disabled={busyId === o.id}
@@ -1987,7 +2002,7 @@ export default function Home() {
 
               <tbody className="divide-y divide-stone-100 text-sm md:text-[15px]">
                 {ordersToRender.map((o) => (
-                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40', o.status === 'closed' && 'bg-stone-100/70')}>
+                  <tr key={o.id} className={cx('transition hover:bg-stone-50/70', o.status === 'new' && 'bg-amber-50/40', o.status === 'closed' && 'bg-stone-100/70', o.status === 'cancelled' && 'bg-rose-50/70')}>
                     <td className="px-6 py-4 md:px-8">
                       <div className="font-extrabold text-stone-900">#{o.receipt_number}</div>
                       <div className="mt-1 text-xs font-bold text-stone-500">{formatOrderAge(o.created_at, currentLang)}</div>
@@ -2007,17 +2022,17 @@ export default function Home() {
                     </td>
                     <td className="px-6 py-4 md:px-8">
                       <div className="flex flex-wrap gap-2">
-                        {o.status === 'closed' && profile.role === 'admin' ? (
+                        {(o.status === 'closed' || o.status === 'cancelled') && profile.role === 'admin' ? (
                           <button
                             onClick={() => updateStatus(o.id, 'new')}
                             disabled={busyId === o.id}
                             className="rounded-2xl bg-amber-500 px-4 py-2 text-sm font-extrabold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {busyId === o.id ? t.updating : t.restoreReady}
+                            {busyId === o.id ? t.updating : o.status === 'cancelled' ? t.restoreOrder : t.restoreReady}
                           </button>
                         ) : (
                           <>
-                            {o.status !== 'closed' && (
+                            {o.status !== 'closed' && o.status !== 'cancelled' && (
                               <button
                                 onClick={() => updateStatus(o.id, 'ready')}
                                 disabled={busyId === o.id || o.status === 'ready'}
@@ -2033,6 +2048,16 @@ export default function Home() {
                                   : o.status === 'ready'
                                   ? `${t.ready} ✔️`
                                   : t.ready}
+                              </button>
+                            )}
+
+                            {profile.role === 'admin' && o.status !== 'closed' && o.status !== 'cancelled' && (
+                              <button
+                                onClick={() => updateStatus(o.id, 'cancelled')}
+                                disabled={busyId === o.id}
+                                className="rounded-2xl bg-rose-500 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {busyId === o.id ? t.updating : t.cancelOrder}
                               </button>
                             )}
 
