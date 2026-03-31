@@ -348,6 +348,42 @@ function formatOrderTime(dateString: string, lang: Language) {
   }).format(date);
 }
 
+async function sendWhatsAppStatusNotification(order: Order, status: string) {
+  const normalizedPhone = safeText(order.phone).replace(/[^\d+]/g, '');
+
+  if (!normalizedPhone) {
+    return { ok: false, reason: 'missing-phone' as const };
+  }
+
+  const response = await fetch('/api/send-whatsapp-status', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      orderId: order.id,
+      status,
+      receipt_number: order.receipt_number,
+      customer_name: order.customer_name,
+      phone: normalizedPhone,
+      branch: order.branch,
+      created_at: order.created_at,
+    }),
+  });
+
+  if (!response.ok) {
+    let errorMessage = 'WhatsApp request failed';
+
+    try {
+      const result = await response.json();
+      errorMessage = result?.error || errorMessage;
+    } catch {}
+
+    throw new Error(errorMessage);
+  }
+
+  return { ok: true as const };
+}
 
 export default function Home() {
   const [uiLanguage, setUiLanguage] = useState<Language>(() => getStoredLanguage());
@@ -705,6 +741,7 @@ export default function Home() {
     setBusyId(id);
 
     try {
+      const currentOrder = orders.find((order) => order.id === id) || null;
       const { error } = await supabase.from('orders').update({ status }).eq('id', id);
 
       if (error) {
@@ -712,7 +749,27 @@ export default function Home() {
         return;
       }
 
-      showActionSuccess(t.updateStatusSuccess);
+      if (currentOrder && (status === 'ready' || status === 'closed')) {
+        try {
+          await sendWhatsAppStatusNotification(currentOrder, status);
+          showActionSuccess(
+            isArabic
+              ? `${t.updateStatusSuccess} + تم إرسال رسالة واتساب`
+              : `${t.updateStatusSuccess} + WhatsApp message sent`
+          );
+        } catch (whatsAppError) {
+          console.error('WHATSAPP SEND ERROR:', whatsAppError);
+          showMessage(
+            'error',
+            isArabic
+              ? `${t.updateStatusSuccess} لكن تعذر إرسال رسالة الواتساب`
+              : `${t.updateStatusSuccess}, but WhatsApp sending failed`
+          );
+        }
+      } else {
+        showActionSuccess(t.updateStatusSuccess);
+      }
+
       await fetchOrders(true);
     } finally {
       setBusyId(null);
