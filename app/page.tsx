@@ -765,10 +765,6 @@ export default function Home() {
 
       showActionSuccess(t.updateStatusSuccess);
       await fetchOrders(true);
-
-      setTimeout(() => {
-        window.location.href = '/';
-      }, 700);
     } finally {
       setBusyId(null);
     }
