@@ -309,6 +309,9 @@ const BRANCH_OPTIONS = [
   { value: 'فرع الروضة', labelAr: 'فرع الروضة', labelEn: 'Rawda Branch' },
 ] as const;
 
+const WHATSAPP_WEBHOOK_URL =
+  'https://elytroid-concetta-unpulleyed.ngrok-free.dev/webhook/order-status';
+
 function cx(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(' ');
 }
@@ -724,7 +727,7 @@ export default function Home() {
               ? `تم تسليم طلبك رقم ${order?.receipt_number || '-'} بنجاح 🙏`
               : `Your order #${order?.receipt_number || '-'} has been delivered successfully 🙏`;
 
-          const response = await fetch('/api/send-whatsapp-status', {
+          const response = await fetch(WHATSAPP_WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -738,7 +741,7 @@ export default function Home() {
           });
 
           if (!response.ok) {
-            console.error('WHATSAPP SEND FAILED:', await response.text());
+            console.error('WHATSAPP WEBHOOK FAILED:', await response.text());
             showMessage(
               'error',
               isArabic
@@ -749,7 +752,7 @@ export default function Home() {
             return;
           }
         } catch (error) {
-          console.error('WHATSAPP SEND ERROR:', error);
+          console.error('WHATSAPP WEBHOOK ERROR:', error);
           showMessage(
             'error',
             isArabic
