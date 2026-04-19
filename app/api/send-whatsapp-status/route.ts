@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 
 const RAILWAY_WEBHOOK_URL =
   process.env.RAILWAY_WEBHOOK_URL ||
-  'https://n8n-production-6d4c.up.railway.app/webhook/new-order';
+  'https://n8n-production-6d4c.up.railway.app/webhook/order-status';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+
+    console.log('API route hit');
+    console.log('Sending webhook to:', RAILWAY_WEBHOOK_URL);
+    console.log('Request body:', body);
 
     if (!RAILWAY_WEBHOOK_URL) {
       return NextResponse.json(
@@ -17,9 +21,6 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
-
-    console.log('Sending webhook to:', RAILWAY_WEBHOOK_URL);
-    console.log('Request body:', body);
 
     const response = await fetch(RAILWAY_WEBHOOK_URL, {
       method: 'POST',
