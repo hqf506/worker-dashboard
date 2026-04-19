@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const RAILWAY_WEBHOOK_URL =
   process.env.RAILWAY_WEBHOOK_URL ||
-  'https://n8n-production-b163.up.railway.app/webhook/order-status';
+  'https://n8n-production-6d4c.up.railway.app/webhook/new-order';
 
 export async function POST(req: Request) {
   try {
