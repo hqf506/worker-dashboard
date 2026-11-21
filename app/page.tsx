@@ -367,6 +367,7 @@ export default function Home() {
   const [resendOpen, setResendOpen] = useState(false);
   const [resendReceipt, setResendReceipt] = useState('');
   const [resendPreview, setResendPreview] = useState<{ receipt_number: string; customer_name: string; phone_number: string; total_money: number; branch: string } | null>(null);
+  const [resendTicket, setResendTicket] = useState('');
   const [resendBusy, setResendBusy] = useState(false);
   const [resendError, setResendError] = useState('');
   const [resendSuccess, setResendSuccess] = useState('');
@@ -718,14 +719,15 @@ export default function Home() {
       const response = await fetch('/api/invoices/resend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action, receipt_number: resendReceipt.trim() }),
+        body: JSON.stringify({ action, receipt_number: resendReceipt.trim(), ...(action === 'send' ? { ticket: resendTicket } : {}) }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Request failed');
-      if (action === 'preview') setResendPreview(payload.invoice);
+      if (action === 'preview') { setResendPreview(payload.invoice); setResendTicket(payload.ticket); }
       else {
         setResendSuccess(isArabic ? 'تم قبول طلب الإرسال من خدمة الواتساب' : 'WhatsApp service accepted the send request');
         setResendPreview(null);
+        setResendTicket('');
       }
     } catch (error) {
       setResendError(error instanceof Error ? error.message : 'Request failed');
@@ -1295,7 +1297,7 @@ export default function Home() {
             </div>
             <p className="mt-2 text-sm text-stone-600">{isArabic ? 'أدخل رقم الفاتورة، راجع بيانات العميل ثم أكّد الإرسال.' : 'Enter the receipt number, review the recipient, then confirm.'}</p>
             <label className="mt-5 block text-sm font-bold">{isArabic ? 'رقم الفاتورة' : 'Receipt number'}</label>
-            <input dir="ltr" value={resendReceipt} onChange={(e) => { setResendReceipt(e.target.value); setResendPreview(null); setResendSuccess(''); }} placeholder="3-0372" maxLength={40} className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-left outline-none focus:border-stone-800" />
+            <input dir="ltr" value={resendReceipt} onChange={(e) => { setResendReceipt(e.target.value); setResendPreview(null); setResendTicket(''); setResendSuccess(''); }} placeholder="3-0372" maxLength={40} className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-left outline-none focus:border-stone-800" />
             <button type="button" onClick={() => resendRequest('preview')} disabled={resendBusy || !resendReceipt.trim()} className="mt-3 w-full rounded-xl bg-stone-900 px-4 py-3 font-bold text-white disabled:opacity-40">
               {resendBusy ? (isArabic ? 'جاري التحميل...' : 'Loading...') : (isArabic ? 'جلب بيانات الفاتورة' : 'Look up invoice')}
             </button>
@@ -1478,6 +1480,7 @@ export default function Home() {
                 <button
                   onClick={() => {
                     setResendReceipt('');
+                    setResendTicket('');
                     setResendPreview(null);
                     setResendError('');
                     setResendSuccess('');
