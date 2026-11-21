@@ -82,9 +82,9 @@ export async function POST(request: NextRequest) {
     if (!r.customer_id || !r.store_id || ![RAWDA_ID, SAHAFA_ID].includes(r.store_id)) return fail('تعذر تحديد العميل أو الفرع', 400);
 
     const branch = r.store_id === RAWDA_ID ? 'فرع الروضة' : 'فرع الصحافة';
-    if (profile.role === 'worker' && profile.branch && profile.branch !== branch) return fail('الفاتورة ليست ضمن صلاحيات فرعك', 403);
+    if (profile.role === 'worker' && (!profile.branch || profile.branch !== branch)) return fail('الفاتورة ليست ضمن صلاحيات فرعك', 403);
     const customer = await loyverse<Customer>('/customers/' + encodeURIComponent(r.customer_id));
-    if (!customer.phone_number || !/^\\+?[0-9]{9,15}$/.test(customer.phone_number.replace(/\\s/g,''))) return fail('لا يوجد رقم جوال صالح للعميل', 400);
+    if (!customer.phone_number || !/^\+?[0-9]{9,15}$/.test(customer.phone_number.replace(/\s/g,''))) return fail('لا يوجد رقم جوال صالح للعميل', 400);
 
     const invoice: Preview = {
       receipt_number: receiptNumber,
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
     const webhookSecret = process.env.INVOICE_RESEND_WEBHOOK_SECRET;
     if (!webhook || !webhookSecret) return fail('إرسال واتساب غير مفعّل بعد. يلزم ربط خدمة n8n المستضافة.', 503);
     const url = new URL(webhook);
-    if (url.protocol !== 'https:' || url.username || url.password || /^(localhost|127\\.|10\\.|192\\.168\\.)/.test(url.hostname)) {
+    if (url.protocol !== 'https:' || url.username || url.password || /^(localhost|127\.|10\.|192\.168\.)/.test(url.hostname)) {
       return fail('عنوان خدمة الإرسال غير آمن', 503);
     }
     const response = await fetch(url, {
