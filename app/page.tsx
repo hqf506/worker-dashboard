@@ -364,6 +364,13 @@ export default function Home() {
   const [workers, setWorkers] = useState<Profile[]>([]);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [resendOpen, setResendOpen] = useState(false);
+  const [resendReceipt, setResendReceipt] = useState('');
+  const [resendPreview, setResendPreview] = useState<{ receipt_number: string; customer_name: string; phone_number: string; total_money: number; branch: string } | null>(null);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendError, setResendError] = useState('');
+  const [resendSuccess, setResendSuccess] = useState('');
+
   const [pageView, setPageView] = useState<PageView>('orders');
 
   useEffect(() => {
@@ -696,6 +703,34 @@ export default function Home() {
       showMessage('error', t.loginError);
     } finally {
       setLoginLoading(false);
+    }
+  };
+
+  const resendRequest = async (action: 'preview' | 'send') => {
+    if (resendBusy) return;
+    setResendBusy(true);
+    setResendError('');
+    setResendSuccess('');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error(isArabic ? 'انتهت الجلسة، سجّل الدخول مرة أخرى' : 'Session expired. Please sign in again');
+      const response = await fetch('/api/invoices/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action, receipt_number: resendReceipt.trim() }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Request failed');
+      if (action === 'preview') setResendPreview(payload.invoice);
+      else {
+        setResendSuccess(isArabic ? 'تم قبول طلب الإرسال من خدمة الواتساب' : 'WhatsApp service accepted the send request');
+        setResendPreview(null);
+      }
+    } catch (error) {
+      setResendError(error instanceof Error ? error.message : 'Request failed');
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -1251,7 +1286,38 @@ export default function Home() {
             <p className="mt-2 text-sm text-stone-500">{t.panel}</p>
           </div>
 
-          {message && (
+          {resendOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/55 p-4" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget && !resendBusy) setResendOpen(false); }}>
+          <section role="dialog" aria-modal="true" aria-label={isArabic ? 'إعادة إرسال الفاتورة' : 'Resend invoice'} className="w-full max-w-lg rounded-[28px] bg-white p-5 shadow-2xl sm:p-7">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-xl font-extrabold text-stone-900">{isArabic ? 'إعادة إرسال الفاتورة' : 'Resend invoice'}</h2>
+              <button type="button" onClick={() => setResendOpen(false)} disabled={resendBusy} className="rounded-xl bg-stone-100 px-3 py-2 font-bold disabled:opacity-40" aria-label="Close">✕</button>
+            </div>
+            <p className="mt-2 text-sm text-stone-600">{isArabic ? 'أدخل رقم الفاتورة، راجع بيانات العميل ثم أكّد الإرسال.' : 'Enter the receipt number, review the recipient, then confirm.'}</p>
+            <label className="mt-5 block text-sm font-bold">{isArabic ? 'رقم الفاتورة' : 'Receipt number'}</label>
+            <input dir="ltr" value={resendReceipt} onChange={(e) => { setResendReceipt(e.target.value); setResendPreview(null); setResendSuccess(''); }} placeholder="3-0372" maxLength={40} className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 text-left outline-none focus:border-stone-800" />
+            <button type="button" onClick={() => resendRequest('preview')} disabled={resendBusy || !resendReceipt.trim()} className="mt-3 w-full rounded-xl bg-stone-900 px-4 py-3 font-bold text-white disabled:opacity-40">
+              {resendBusy ? (isArabic ? 'جاري التحميل...' : 'Loading...') : (isArabic ? 'جلب بيانات الفاتورة' : 'Look up invoice')}
+            </button>
+            {resendPreview && (
+              <div className="mt-5 space-y-3 rounded-2xl border border-stone-200 bg-stone-50 p-4 text-sm">
+                <div className="flex justify-between gap-2"><span>{t.invoice}</span><strong dir="ltr">{resendPreview.receipt_number}</strong></div>
+                <div className="flex justify-between gap-2"><span>{t.customer}</span><strong>{resendPreview.customer_name}</strong></div>
+                <div className="flex justify-between gap-2"><span>{t.phone}</span><strong dir="ltr">{resendPreview.phone_number}</strong></div>
+                <div className="flex justify-between gap-2"><span>{t.branch}</span><strong>{resendPreview.branch}</strong></div>
+                <div className="flex justify-between gap-2"><span>{isArabic ? 'الإجمالي' : 'Total'}</span><strong>{resendPreview.total_money} {isArabic ? 'ريال' : 'SAR'}</strong></div>
+                <button type="button" onClick={() => resendRequest('send')} disabled={resendBusy} className="mt-2 w-full rounded-xl bg-emerald-700 px-4 py-3 font-extrabold text-white disabled:opacity-40">
+                  {isArabic ? 'تأكيد إرسال الفاتورة عبر واتساب' : 'Confirm WhatsApp send'}
+                </button>
+              </div>
+            )}
+            {resendError && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{resendError}</p>}
+            {resendSuccess && <p role="status" className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">{resendSuccess}</p>}
+          </section>
+        </div>
+      )}
+
+      {message && (
             <div
               className={cx(
                 'mb-4 rounded-2xl px-4 py-3 text-sm font-bold',
@@ -1407,6 +1473,19 @@ export default function Home() {
                   className="rounded-2xl bg-white px-4 py-3 text-sm font-extrabold text-stone-900 ring-1 ring-stone-200 shadow-sm transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {refreshingOrders ? t.refreshing : t.refreshOrders}
+                </button>
+
+                <button
+                  onClick={() => {
+                    setResendReceipt('');
+                    setResendPreview(null);
+                    setResendError('');
+                    setResendSuccess('');
+                    setResendOpen(true);
+                  }}
+                  className="rounded-2xl bg-stone-900 px-4 py-3 text-sm font-extrabold text-white shadow-sm transition hover:bg-stone-700"
+                >
+                  {isArabic ? 'إعادة إرسال الفاتورة' : 'Resend Invoice'}
                 </button>
 
                 <button
