@@ -57,7 +57,10 @@ export async function POST(request: NextRequest) {
   const secret = process.env.INVOICE_RESEND_SIGNING_SECRET;
   if (!supaUrl || !supaKey || !secret) return fail('خدمة إعادة الإرسال غير مهيأة', 503);
 
-  const client = createClient(supaUrl, supaKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const client = createClient(supaUrl, supaKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { headers: { Authorization: auth } },
+  });
   const { data: authData, error: authError } = await client.auth.getUser(auth.slice(7));
   if (authError || !authData.user) return fail('انتهت جلسة الدخول', 401);
   const user = authData.user;
